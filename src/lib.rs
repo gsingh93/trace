@@ -24,23 +24,7 @@ pub fn registrar(reg: &mut Registry) {
 
 fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem,
                 item: P<Item>) -> P<Item> {
-    let mut prefix_enter = "[+]";
-    let mut prefix_exit = "[-]";
-    if let MetaList(_, ref v) = meta.node {
-        for i in v {
-            if let MetaNameValue(ref name, ref s) = i.node {
-                if *name == "prefix_enter" {
-                    if let LitStr(ref new_prefix, _) = s.node {
-                        prefix_enter = &*new_prefix;
-                    }
-                } else if *name == "prefix_exit" {
-                    if let LitStr(ref new_prefix, _) = s.node {
-                        prefix_exit = &*new_prefix;
-                    }
-                }
-            }
-        }
-    }
+    let (prefix_enter, prefix_exit) = get_prefixes(meta);
     match item.node {
         ItemFn(ref decl, ref style, ref abi, ref generics, ref block) => {
             let ref ident = item.ident.name.as_str();
@@ -62,4 +46,25 @@ fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem,
             item.clone()
         }
     }
+}
+
+fn get_prefixes(meta: &MetaItem) -> (&str, &str) {
+    let mut prefix_enter = "[+]";
+    let mut prefix_exit = "[-]";
+    if let MetaList(_, ref v) = meta.node {
+        for i in v {
+            if let MetaNameValue(ref name, ref s) = i.node {
+                if *name == "prefix_enter" {
+                    if let LitStr(ref new_prefix, _) = s.node {
+                        prefix_enter = &*new_prefix;
+                    }
+                } else if *name == "prefix_exit" {
+                    if let LitStr(ref new_prefix, _) = s.node {
+                        prefix_exit = &*new_prefix;
+                    }
+                }
+            }
+        }
+    }
+    (prefix_enter, prefix_exit)
 }
