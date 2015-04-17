@@ -31,4 +31,14 @@ fn bar() {
 }
 ```
 
+Output:
+```
+[+] Entering foo
+I'm in foo!
+[ENTER] Entering bar
+I'm in bar!
+[EXIT] Exiting bar
+[-] Exiting foo
+```
+
 Note that you can customize the prefix of the `println!` statement with `prefix_enter` and `prefix_exit`.
