@@ -1,0 +1,8 @@
+[package]
+name = "trace"
+version = "0.1.0"
+authors = ["Gulshan Singh <gulshan@umich.edu>"]
+
+[lib]
+name = "trace"
+plugin = true
