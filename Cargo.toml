@@ -1,7 +1,10 @@
 [package]
 name = "trace"
-version = "0.1.0"
-authors = ["Gulshan Singh <gulshan@umich.edu>"]
+version = "0.0.1"
+authors = ["Gulshan Singh <gsingh2011@gmail.com>"]
+repository = "https://github.com/gsingh93/trace"
+license = "MIT"
+description = "A syntax extension for tracing the execution of functions"
 
 [lib]
 name = "trace"
