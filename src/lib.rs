@@ -6,7 +6,7 @@ extern crate rustc;
 use rustc::plugin::Registry;
 
 use syntax::ptr::P;
-use syntax::ast::{Item, MetaItem, ItemFn};
+use syntax::ast::{Item, Item_, MetaItem, ItemFn, Block};
 use syntax::ast::MetaItem_::{MetaList, MetaNameValue};
 use syntax::ast::Lit_::LitStr;
 use syntax::codemap::Span;
@@ -18,33 +18,42 @@ use syntax::parse::token::intern;
 
 #[plugin_registrar]
 pub fn registrar(reg: &mut Registry) {
-    reg.register_syntax_extension(intern("trace"),
-                                  Modifier(Box::new(trace_expand)));
+    reg.register_syntax_extension(intern("trace"), Modifier(Box::new(trace_expand)));
 }
 
-fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem,
-                item: P<Item>) -> P<Item> {
+fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem, item: P<Item>) -> P<Item> {
     let (prefix_enter, prefix_exit) = get_prefixes(meta);
     match item.node {
-        ItemFn(ref decl, ref style, ref abi, ref generics, ref block) => {
-            let ref ident = item.ident.name.as_str();
-            let new_contents = quote_expr!(&mut *cx,
-                {
-                    println!("{} Entering {}", $prefix_enter, $ident);
-                    $block;
-                    println!("{} Exiting {}", $prefix_exit, $ident);
-                }
-            );
-            let new_item_ = ItemFn((*decl).clone(), style.clone(),
-                                        abi.clone(), generics.clone(),
-                                        cx.block_expr(new_contents));
-
-            cx.item(item.span, item.ident, item.attrs.clone(), new_item_)
+        ItemFn(_, _, _, _, _) => {
+            let ref name = item.ident.name.as_str();
+            let new_item = mod_function(cx, prefix_enter, prefix_exit, name, &item.node);
+            cx.item(item.span, item.ident, item.attrs.clone(), new_item)
         }
         _ => {
             cx.span_err(sp, "trace is only permissible on functions");
             item.clone()
         }
+    }
+}
+
+fn new_block(prefix_enter: &str, prefix_exit: &str, cx: &mut ExtCtxt, name: &str,
+             block: &P<Block>) -> P<Block> {
+    let new_block = quote_expr!(cx,
+    {
+        println!("{} Entering {}", $prefix_enter, $name);
+        $block;
+        println!("{} Exiting {}", $prefix_exit, $name);
+    });
+    cx.block_expr(new_block)
+}
+
+fn mod_function(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, name: &str,
+                item: &Item_) -> Item_ {
+    if let &ItemFn(ref decl, ref style, ref abi, ref generics, ref block) = item {
+        let new_block = new_block(prefix_enter, prefix_exit, cx, name, block);
+        ItemFn((*decl).clone(), style.clone(), abi.clone(), generics.clone(), new_block)
+    } else {
+        panic!("Expected ItemFn")
     }
 }
 
