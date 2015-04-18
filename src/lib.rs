@@ -39,10 +39,14 @@ fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem, item: P<Item>) -> P
 fn new_block(prefix_enter: &str, prefix_exit: &str, cx: &mut ExtCtxt, name: &str,
              block: &P<Block>) -> P<Block> {
     let new_block = quote_expr!(cx,
-    {
-        println!("{} Entering {}", $prefix_enter, $name);
+    unsafe {
+        let mut s = String::new();
+        (0..depth).map(|_| s.push(' ')).count();
+        println!("{}{} Entering {}", s, $prefix_enter, $name);
+        depth += 1;
         $block;
-        println!("{} Exiting {}", $prefix_exit, $name);
+        depth -= 1;
+        println!("{}{} Exiting {}", s, $prefix_exit, $name);
     });
     cx.block_expr(new_block)
 }
