@@ -10,10 +10,15 @@ fn main() {
 #[trace]
 fn foo() {
     println!("I'm in foo!");
-    bar();
+    bar(0);
 }
 
 #[trace(prefix_enter="[ENTER]", prefix_exit="[EXIT]")]
-fn bar() {
+fn bar(a: i32) -> i32 {
     println!("I'm in bar!");
+    if a == 1 {
+        0
+    } else {
+        1
+    }
 }
