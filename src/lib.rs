@@ -10,7 +10,8 @@ use syntax::ext::quote::rt::ToTokens;
 use rustc::plugin::Registry;
 
 use syntax::ptr::P;
-use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, Block, Stmt, Ident, TokenTree};
+use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, ItemMod, Block, Stmt, Ident, TokenTree,
+                  Mod};
 use syntax::ast::MetaItem_::{MetaList, MetaNameValue};
 use syntax::ast::Lit_::LitStr;
 use syntax::codemap::{self, Span, Spanned};
@@ -31,6 +32,19 @@ fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem, item: P<Item>) -> P
         &ItemFn(_, _, _, _, _) => {
             let new_item = expand_function(cx, prefix_enter, prefix_exit, &item, sp);
             cx.item(item.span, item.ident, item.attrs.clone(), new_item)
+        }
+        &ItemMod(ref m) => {
+            let mut new_items = vec!();
+            for i in m.items.iter() {
+                if let &ItemFn(_, _, _, _, _) = &i.node {
+                    let new_item = expand_function(cx, prefix_enter, prefix_exit, i, i.span);
+                    new_items.push(cx.item(i.span, i.ident, i.attrs.clone(), new_item));
+                } else {
+                    new_items.push((*i).clone());
+                }
+            }
+            return cx.item(item.span, item.ident, item.attrs.clone(),
+                           ItemMod(Mod { inner: m.inner, items: new_items }))
         }
         _ => {
             cx.span_err(sp, "trace is only permissible on functions");
@@ -61,7 +75,7 @@ fn get_prefixes(meta: &MetaItem) -> (&str, &str) {
 }
 
 fn expand_function(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, item: &P<Item>,
-                sp: Span) -> Item_ {
+                   sp: Span) -> Item_ {
     let ref name = item.ident.name.as_str();
     if let &ItemFn(ref decl, style, abi, ref generics, _) = &item.node {
         let fn_ident = ast::Ident::new(intern(&format!("__trace_inner_{}", name)));
