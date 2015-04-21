@@ -5,14 +5,15 @@ extern crate rustc;
 
 use std::slice::SliceConcatExt;
 use syntax::ext::quote::rt::ExtParseUtils;
+use syntax::ext::quote::rt::ToTokens;
 
 use rustc::plugin::Registry;
 
 use syntax::ptr::P;
-use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, Block, Stmt, Ident};
+use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, Block, Stmt, Ident, TokenTree};
 use syntax::ast::MetaItem_::{MetaList, MetaNameValue};
 use syntax::ast::Lit_::LitStr;
-use syntax::codemap::{Span, Spanned};
+use syntax::codemap::{self, Span, Spanned};
 use syntax::ext::base::ExtCtxt;
 use syntax::ext::base::SyntaxExtension::Modifier;
 
@@ -72,9 +73,9 @@ fn expand_function(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, item
             None => { return item.node.clone(); }
         };
         let ty_args = ty_args(generics, sp);
-        let result_expr = assign_result_expr(cx, fn_ident, args, ty_args);
+        let result_expr = assign_result_expr(cx, fn_ident, args.clone(), ty_args);
 
-        let new_block = new_block(prefix_enter, prefix_exit, cx, name, new_decl, result_expr);
+        let new_block = new_block(cx, prefix_enter, prefix_exit, name, new_decl, result_expr, args);
         ItemFn(decl.clone(), style, abi, generics.clone(), new_block)
     } else {
         panic!("Expected ItemFn")
@@ -99,8 +100,8 @@ fn fn_decl(sp: Span, fn_ident: Ident, item: P<Item>) -> P<Stmt> {
     }
 }
 
-fn assign_result_expr(cx: &mut ExtCtxt, fn_ident: Ident, arg_toks: Vec<ast::TokenTree>,
-                      ty_arg_toks: Vec<ast::TokenTree>) -> P<Stmt> {
+fn assign_result_expr(cx: &mut ExtCtxt, fn_ident: Ident, arg_toks: Vec<TokenTree>,
+                      ty_arg_toks: Vec<TokenTree>) -> P<Stmt> {
     if ty_arg_toks.is_empty() {
         quote_stmt!(cx, let __trace_result = $fn_ident::<$ty_arg_toks>($arg_toks)).unwrap()
     } else {
@@ -108,7 +109,7 @@ fn assign_result_expr(cx: &mut ExtCtxt, fn_ident: Ident, arg_toks: Vec<ast::Toke
     }
 }
 
-fn args(cx: &ExtCtxt, decl: &ast::FnDecl, sp: Span) -> Option<Vec<ast::TokenTree>> {
+fn args(cx: &ExtCtxt, decl: &ast::FnDecl, sp: Span) -> Option<Vec<TokenTree>> {
     if !decl.inputs.iter().map(|a| &*a.pat).all(is_sane_pattern) {
         return None;
     }
@@ -123,7 +124,7 @@ fn args(cx: &ExtCtxt, decl: &ast::FnDecl, sp: Span) -> Option<Vec<ast::TokenTree
         .connect(&ast::TtToken(sp, token::Comma)))
 }
 
-fn ty_args(generics: &ast::Generics, sp: Span) -> Vec<ast::TokenTree> {
+fn ty_args(generics: &ast::Generics, sp: Span) -> Vec<TokenTree> {
     generics.ty_params
         .iter()
         .map(|tp| vec![token::Ident(tp.ident, token::Plain)])
@@ -155,18 +156,47 @@ fn is_sane_pattern(pat: &ast::Pat) -> bool {
     }
 }
 
-fn new_block(prefix_enter: &str, prefix_exit: &str, cx: &mut ExtCtxt, name: &str,
-             inner_func: P<Stmt>, result_expr: P<Stmt>) -> P<Block> {
+fn get_idents(args: &[TokenTree], idents: &mut Vec<Ident>) {
+    for arg in args.iter() {
+        match arg {
+            &ast::TtToken(_, token::Ident(ref ident, _)) => idents.push((*ident).clone()),
+            &ast::TtToken(_, token::Comma) => (),
+            &ast::TtDelimited(_, ref delim) => get_idents(&delim.tts, idents),
+            _ => panic!("Unexpected token {:?}", arg)
+        }
+    }
+}
+
+fn new_block(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, name: &str,
+             inner_func: P<Stmt>, result_expr: P<Stmt>, args: Vec<TokenTree>) -> P<Block> {
+    let mut idents = vec!();
+    get_idents(&args, &mut idents);
+    let args: Vec<TokenTree> = idents
+        .iter()
+        .map(|ident| vec![token::Ident((*ident).clone(), token::Plain)])
+        .collect::<Vec<_>>()
+        .connect(&token::Comma)
+        .into_iter()
+        .map(|t| ast::TtToken(codemap::DUMMY_SP, t))
+        .collect();
+
+
+    let mut arg_fmt = vec!();
+    for ident in idents.iter() {
+        arg_fmt.push(format!("{}: {{:?}}", ident))
+    }
+    let arg_fmt_str = &*arg_fmt.connect(", ");
     let new_block = quote_expr!(cx,
     unsafe {
         let mut s = String::new();
         (0..depth).map(|_| s.push(' ')).count();
-        println!("{}{} Entering {}", s, $prefix_enter, $name);
+        let args = format!($arg_fmt_str, $args);
+        println!("{}{} Entering {}({})", s, $prefix_enter, $name, args);
         depth += 1;
         $inner_func;
         $result_expr;
         depth -= 1;
-        println!("{}{} Exiting {}", s, $prefix_exit, $name);
+        println!("{}{} Exiting {} = {:?}", s, $prefix_exit, $name, __trace_result);
         __trace_result
     });
     cx.block_expr(new_block)

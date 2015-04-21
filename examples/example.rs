@@ -4,21 +4,21 @@
 static mut depth: u32 = 0;
 
 fn main() {
-    foo();
+    foo(1, 2);
 }
 
 #[trace]
-fn foo() {
+fn foo(a: i32, b: i32) {
     println!("I'm in foo!");
-    bar(0);
+    bar((a, b));
 }
 
 #[trace(prefix_enter="[ENTER]", prefix_exit="[EXIT]")]
-fn bar(a: i32) -> i32 {
+fn bar((a, b): (i32, i32)) -> i32 {
     println!("I'm in bar!");
     if a == 1 {
-        0
+        2
     } else {
-        1
+        b
     }
 }
