@@ -47,7 +47,7 @@ fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem, item: P<Item>) -> P
                            ItemMod(Mod { inner: m.inner, items: new_items }))
         }
         _ => {
-            cx.span_err(sp, "trace is only permissible on functions");
+            cx.span_err(sp, "trace is only permissible on functions or mods");
             item.clone()
         }
     }
@@ -84,7 +84,11 @@ fn expand_function(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, item
 
         let args = match args(cx, &**decl, sp) {
             Some(args) => args,
-            None => { return item.node.clone(); }
+            None => {
+                cx.span_warn(item.span, "The argument pattern for this function is too \
+                                         complicated to trace. Skipping");
+                return item.node.clone();
+            }
         };
         let ty_args = ty_args(generics, sp);
         let result_expr = assign_result_expr(cx, fn_ident, args.clone(), ty_args);
