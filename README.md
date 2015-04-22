@@ -54,11 +54,12 @@ I'm in bar!
 
 Note that you can customize the prefix of the `println!` statement with `prefix_enter` and `prefix_exit`. The `depth` variable must be a global `static mut` variable, it's used for indenting the output.
 
-You can use `#[trace]` on `mod` items as well. To apply `#[trace]` to all functions in the current `mod`, put `#![trace]` (note the `!`) at the top of the file. When using `#[trace]` on `mod`s, the `depth` variable doesn't need to be defined (it's defined for you automatically). Note that the `depth` variable isn't shared between `mod`s, so indentation won't be perfect when tracing functions in multiple `mod`s.
+You can use `#[trace]` on `mod`s as well. To apply `#[trace]` to all functions in the current `mod`, put `#![trace]` (note the `!`) at the top of the file. When using `#[trace]` on `mod`s, the `depth` variable doesn't need to be defined (it's defined for you automatically). Note that the `depth` variable isn't shared between `mod`s, so indentation won't be perfect when tracing functions in multiple `mod`s.
+
+You can also use `#[trace]` on `impl`s. See the `examples` folder for more details.
 
 ## Limitations
 
-- Currently, `#[trace]` is not supported on `impl` methods or `impl` declarations. This limitation will be lifted very soon.
+- Currently, `#[trace]` is not supported on `impl` methods. This limitation will be lifted very soon.
 - It would be nice to enable/disable the tracing of particular methods directly from the attribute on the `impl` or `mod` instead of the removing/adding the attribute to individual functions. This should be added soon.
 - It would be nice to enable/disable the printing of arguments/return values from the attribute, especially since printing requires the types to implement `Debug`. This should be added soon.
-- Trace only works for [certain types of patterns](https://github.com/gsingh93/trace/blob/master/src/lib.rs#L146) in the function arguments. If these patterns are too complicated, trace skips the entire function. This limitation is very tricky to fix, and there is no ETA on when it will be fixed.
