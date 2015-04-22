@@ -10,9 +10,8 @@ use syntax::ext::quote::rt::ToTokens;
 use rustc::plugin::Registry;
 
 use syntax::ptr::P;
-use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, ItemMod, Block, Ident, TokenTree,
+use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, ItemMod, Block, Ident, TokenTree, FnDecl,
                   Mod, ItemStatic, ItemImpl, ImplItem, ImplItem_};
-use syntax::ast::ExplicitSelf_::SelfStatic;
 use syntax::ast::ImplItem_::MethodImplItem;
 use syntax::ast::Expr_::ExprLit;
 use syntax::ast::Mutability::MutMutable;
@@ -33,8 +32,8 @@ pub fn registrar(reg: &mut Registry) {
 fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem, item: P<Item>) -> P<Item> {
     let (prefix_enter, prefix_exit) = get_prefixes(meta);
     match &item.node {
-        &ItemFn(_, _, _, _, _) => {
-            let new_item = expand_function(cx, prefix_enter, prefix_exit, &item, sp);
+        &ItemFn(..) => {
+            let new_item = expand_function(cx, prefix_enter, prefix_exit, &item);
             cx.item(item.span, item.ident, item.attrs.clone(), new_item)
         }
         &ItemMod(ref m) => {
@@ -80,7 +79,7 @@ fn expand_impl(cx: &mut ExtCtxt, items: &[P<ImplItem>], prefix_enter: &str,
                prefix_exit: &str) -> Vec<P<ImplItem>> {
     let mut new_items = vec!();
     for item in items.iter() {
-        if let MethodImplItem(_, _) = item.node {
+        if let MethodImplItem(..) = item.node {
             let new_item = expand_impl_method(cx, prefix_enter, prefix_exit, item);
             new_items.push(P(ImplItem { node: new_item, attrs: vec!(), .. (**item).clone() }));
         }
@@ -92,25 +91,8 @@ fn expand_impl_method(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str,
                       item: &ImplItem) -> ImplItem_ {
     let ref name = item.ident.name.as_str();
     if let &MethodImplItem(ref sig, ref block) = &item.node {
-        // TODO: Remove this once we have proper ident extraction from the `args` function
-        let decl = if sig.explicit_self.node != SelfStatic {
-            let mut decl = (*sig.decl).clone();
-            decl.inputs.remove(0);
-            P(decl)
-        } else {
-            sig.decl.clone()
-        };
-
-        let args = match args(cx, &*decl, item.span) {
-            Some(args) => args,
-            None => {
-                cx.span_warn(item.span, "The argument pattern for this function is too \
-                                         complicated to trace. Skipping");
-                return item.node.clone();
-            }
-        };
-
-        let new_block = new_block(cx, prefix_enter, prefix_exit, name, block.clone(), args);
+        let idents = arg_idents(&sig.decl);
+        let new_block = new_block(cx, prefix_enter, prefix_exit, name, block.clone(), idents);
         MethodImplItem(sig.clone(), new_block)
     } else {
         panic!("Expected method");
@@ -123,8 +105,8 @@ fn expand_mod(cx: &mut ExtCtxt, m: &Mod, prefix_enter: &str, prefix_exit: &str) 
     let mut depth_span = None;
     for i in m.items.iter() {
         match &i.node {
-            &ItemFn(_, _, _, _, _) => {
-                let new_item = expand_function(cx, prefix_enter, prefix_exit, i, i.span);
+            &ItemFn(..) => {
+                let new_item = expand_function(cx, prefix_enter, prefix_exit, i);
                 new_items.push(cx.item(i.span, i.ident, i.attrs.clone(), new_item));
             }
             &ItemStatic(_, ref mut_, ref expr) => {
@@ -166,77 +148,57 @@ fn expand_mod(cx: &mut ExtCtxt, m: &Mod, prefix_enter: &str, prefix_exit: &str) 
     new_items
 }
 
-fn expand_function(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, item: &P<Item>,
-                   sp: Span) -> Item_ {
+fn expand_function(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str,
+                   item: &P<Item>) -> Item_ {
     let ref name = item.ident.name.as_str();
     if let &ItemFn(ref decl, style, abi, ref generics, ref block) = &item.node {
-        let args = match args(cx, &**decl, sp) {
-            Some(args) => args,
-            None => {
-                cx.span_warn(item.span, "The argument pattern for this function is too \
-                                         complicated to trace. Skipping");
-                return item.node.clone();
-            }
-        };
-
-        let new_block = new_block(cx, prefix_enter, prefix_exit, name, block.clone(), args);
+        let idents = arg_idents(&**decl);
+        let new_block = new_block(cx, prefix_enter, prefix_exit, name, block.clone(), idents);
         ItemFn(decl.clone(), style, abi, generics.clone(), new_block)
     } else {
         panic!("Expected a function")
     }
 }
 
-fn args(cx: &ExtCtxt, decl: &ast::FnDecl, sp: Span) -> Option<Vec<TokenTree>> {
-    if !decl.inputs.iter().map(|a| &*a.pat).all(is_sane_pattern) {
-        return None;
-    }
-
-    let cm = &cx.parse_sess.span_diagnostic.cm;
-    Some(decl.inputs
-        .iter()
-        // span_to_snippet really shouldn't return None, so I hope the
-        // unwrap is OK. Not sure we can do anything it is does in any case.
-        .map(|a| cx.parse_tts(cm.span_to_snippet(a.pat.span).unwrap()))
-        .collect::<Vec<_>>()
-        .connect(&ast::TtToken(sp, token::Comma)))
-}
-
-// Check that a pattern can trivially be used to instantiate that pattern.
-// For example if we have `fn foo((x, y): ...) {...}` we can call `foo((x, y))`
-// (assuming x and y are in scope and have the correct type) with the exact same
-// syntax as the pattern is declared. But if the pattern is `z @ (x,y)` we cannot
-// (we need to use `(x, y)`).
-//
-// Ideally we would just translate the pattern to the correct one. But for now
-// we just check if we can skip the translation phase and fail otherwise (FIXME).
-fn is_sane_pattern(pat: &ast::Pat) -> bool {
-    match &pat.node {
-        &ast::PatWild(_) | &ast::PatMac(_) | &ast::PatStruct(..) |
-        &ast::PatLit(_) | &ast::PatRange(..) | &ast::PatVec(..) => false,
-        &ast::PatIdent(ast::BindByValue(ast::MutImmutable), _, _) => true,
-        &ast::PatIdent(..) => false,
-        &ast::PatEnum(_, Some(ref ps)) | &ast::PatTup(ref ps) =>
-            ps.iter().all(|p| is_sane_pattern(&**p)),
-        &ast::PatEnum(..) => false,
-        &ast::PatBox(ref p) | &ast::PatRegion(ref p, _) => is_sane_pattern(&**p)
-    }
-}
-
-fn get_idents(args: &[TokenTree], idents: &mut Vec<Ident>) {
-    for arg in args.iter() {
-        match arg {
-            &ast::TtToken(_, token::Ident(ref ident, _)) => idents.push((*ident).clone()),
-            &ast::TtToken(_, token::Comma) => (),
-            &ast::TtDelimited(_, ref delim) => get_idents(&delim.tts, idents),
-            _ => panic!("Unexpected token {:?}", arg)
+fn arg_idents(decl: &FnDecl) -> Vec<Ident> {
+    fn extract_idents(pat: &ast::Pat_, idents: &mut Vec<Ident>) {
+        match pat {
+            &ast::PatWild(_) | &ast::PatMac(_) | &ast::PatEnum(_, None) | &ast::PatLit(_)
+                | &ast::PatRange(..) => (),
+            &ast::PatIdent(_, sp, _) => if sp.node.as_str() != "self" { idents.push(sp.node) },
+            &ast::PatEnum(_, Some(ref v)) | &ast::PatTup(ref v) => {
+                for p in v {
+                    extract_idents(&p.node, idents);
+                }
+            }
+            &ast::PatStruct(_, ref v, _) => {
+                for p in v {
+                    extract_idents(&p.node.pat.node, idents);
+                }
+            }
+            &ast::PatVec(ref v1, ref opt, ref v2) => {
+                for p in v1 {
+                    extract_idents(&p.node, idents);
+                }
+                if let &Some(ref p) = opt {
+                    extract_idents(&p.node, idents);
+                }
+                for p in v2 {
+                    extract_idents(&p.node, idents);
+                }
+            }
+            &ast::PatBox(ref p) | &ast::PatRegion(ref p, _) => extract_idents(&p.node, idents),
         }
     }
+    let mut idents = vec!();
+    for arg in decl.inputs.iter() {
+        extract_idents(&arg.pat.node, &mut idents);
+    }
+    idents
 }
 
-fn new_block(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, name: &str,
-             block: P<Block>, args: Vec<TokenTree>) -> P<Block> {
-    let mut idents = vec!();
-    get_idents(&args, &mut idents);
+fn new_block(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, name: &str, block: P<Block>,
+             idents: Vec<Ident>) -> P<Block> {
     let args: Vec<TokenTree> = idents
         .iter()
         .map(|ident| vec![token::Ident((*ident).clone(), token::Plain)])
@@ -245,7 +207,6 @@ fn new_block(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, name: &str
         .into_iter()
         .map(|t| ast::TtToken(codemap::DUMMY_SP, t))
         .collect();
-
 
     let mut arg_fmt = vec!();
     for ident in idents.iter() {
