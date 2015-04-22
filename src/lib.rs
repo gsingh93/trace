@@ -11,7 +11,9 @@ use rustc::plugin::Registry;
 
 use syntax::ptr::P;
 use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, ItemMod, Block, Stmt, Ident, TokenTree,
-                  Mod, ItemStatic, ItemImpl, ImplItem};
+                  Mod, ItemStatic, ItemImpl, ImplItem, ImplItem_};
+use syntax::ast::ExplicitSelf_::SelfStatic;
+use syntax::ast::ImplItem_::MethodImplItem;
 use syntax::ast::Expr_::ExprLit;
 use syntax::ast::Mutability::MutMutable;
 use syntax::ast::MetaItem_::{MetaList, MetaNameValue};
@@ -76,7 +78,53 @@ fn get_prefixes(meta: &MetaItem) -> (&str, &str) {
 
 fn expand_impl(cx: &mut ExtCtxt, items: &[P<ImplItem>], prefix_enter: &str,
                prefix_exit: &str) -> Vec<P<ImplItem>> {
-    unimplemented!()
+    let mut new_items = vec!();
+    for item in items.iter() {
+        if let MethodImplItem(_, _) = item.node {
+            let new_item = expand_impl_method(cx, prefix_enter, prefix_exit, item);
+            new_items.push(P(ImplItem { node: new_item, attrs: vec!(), .. (**item).clone() }));
+        }
+    }
+    new_items
+}
+
+fn expand_impl_method(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str,
+                      item: &ImplItem) -> ImplItem_ {
+    let ref name = item.ident.name.as_str();
+    if let &MethodImplItem(ref sig, ref block) = &item.node {
+        let decl = if sig.explicit_self.node != SelfStatic {
+            let mut decl = (*sig.decl).clone();
+            decl.inputs.remove(0);
+            P(decl)
+        } else {
+            sig.decl.clone()
+        };
+
+        let generics = sig.generics.clone();
+
+        let fn_ident = ast::Ident::new(intern(&format!("__trace_inner_{}", name)));
+        let new_node = ItemFn(decl.clone(), sig.unsafety, sig.abi, generics.clone(),
+                              (*block).clone());
+        let inner_item = P(Item { attrs: Vec::new(), vis: ast::Inherited, ident: item.ident,
+                                  id: item.id, node: new_node, span: item.span });
+        let new_decl = fn_decl(item.span.clone(), fn_ident, inner_item);
+
+        let args = match args(cx, &*decl, item.span) {
+            Some(args) => args,
+            None => {
+                cx.span_warn(item.span, "The argument pattern for this function is too \
+                                         complicated to trace. Skipping");
+                return item.node.clone();
+            }
+        };
+        let ty_args = ty_args(&generics, item.span);
+        let result_expr = assign_result_expr(cx, fn_ident, args.clone(), ty_args);
+
+        let new_block = new_block(cx, prefix_enter, prefix_exit, name, new_decl, result_expr, args);
+        MethodImplItem(sig.clone(), new_block)
+    } else {
+        panic!("Expected method");
+    }
 }
 
 fn expand_mod(cx: &mut ExtCtxt, m: &Mod, prefix_enter: &str, prefix_exit: &str) -> Vec<P<Item>> {
