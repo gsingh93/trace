@@ -1,6 +1,6 @@
 [package]
 name = "trace"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["Gulshan Singh <gsingh2011@gmail.com>"]
 repository = "https://github.com/gsingh93/trace"
 license = "MIT"
