@@ -10,7 +10,7 @@ use syntax::ext::quote::rt::ToTokens;
 use rustc::plugin::Registry;
 
 use syntax::ptr::P;
-use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, ItemMod, Block, Stmt, Ident, TokenTree,
+use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, ItemMod, Block, Ident, TokenTree,
                   Mod, ItemStatic, ItemImpl, ImplItem, ImplItem_};
 use syntax::ast::ExplicitSelf_::SelfStatic;
 use syntax::ast::ImplItem_::MethodImplItem;
@@ -18,7 +18,7 @@ use syntax::ast::Expr_::ExprLit;
 use syntax::ast::Mutability::MutMutable;
 use syntax::ast::MetaItem_::{MetaList, MetaNameValue};
 use syntax::ast::Lit_::{LitStr, LitInt};
-use syntax::codemap::{self, Span, Spanned};
+use syntax::codemap::{self, Span};
 use syntax::ext::base::ExtCtxt;
 use syntax::ext::base::SyntaxExtension::Modifier;
 
@@ -92,6 +92,7 @@ fn expand_impl_method(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str,
                       item: &ImplItem) -> ImplItem_ {
     let ref name = item.ident.name.as_str();
     if let &MethodImplItem(ref sig, ref block) = &item.node {
+        // TODO: Remove this once we have proper ident extraction from the `args` function
         let decl = if sig.explicit_self.node != SelfStatic {
             let mut decl = (*sig.decl).clone();
             decl.inputs.remove(0);
@@ -99,15 +100,6 @@ fn expand_impl_method(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str,
         } else {
             sig.decl.clone()
         };
-
-        let generics = sig.generics.clone();
-
-        let fn_ident = ast::Ident::new(intern(&format!("__trace_inner_{}", name)));
-        let new_node = ItemFn(decl.clone(), sig.unsafety, sig.abi, generics.clone(),
-                              (*block).clone());
-        let inner_item = P(Item { attrs: Vec::new(), vis: ast::Inherited, ident: item.ident,
-                                  id: item.id, node: new_node, span: item.span });
-        let new_decl = fn_decl(item.span.clone(), fn_ident, inner_item);
 
         let args = match args(cx, &*decl, item.span) {
             Some(args) => args,
@@ -117,10 +109,8 @@ fn expand_impl_method(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str,
                 return item.node.clone();
             }
         };
-        let ty_args = ty_args(&generics, item.span);
-        let result_expr = assign_result_expr(cx, fn_ident, args.clone(), ty_args);
 
-        let new_block = new_block(cx, prefix_enter, prefix_exit, name, new_decl, result_expr, args);
+        let new_block = new_block(cx, prefix_enter, prefix_exit, name, block.clone(), args);
         MethodImplItem(sig.clone(), new_block)
     } else {
         panic!("Expected method");
@@ -179,11 +169,7 @@ fn expand_mod(cx: &mut ExtCtxt, m: &Mod, prefix_enter: &str, prefix_exit: &str) 
 fn expand_function(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, item: &P<Item>,
                    sp: Span) -> Item_ {
     let ref name = item.ident.name.as_str();
-    if let &ItemFn(ref decl, style, abi, ref generics, _) = &item.node {
-        let fn_ident = ast::Ident::new(intern(&format!("__trace_inner_{}", name)));
-        let inner_item = P(Item { attrs: Vec::new(), vis: ast::Inherited, .. (**item).clone() });
-        let new_decl = fn_decl(sp.clone(), fn_ident, inner_item);
-
+    if let &ItemFn(ref decl, style, abi, ref generics, ref block) = &item.node {
         let args = match args(cx, &**decl, sp) {
             Some(args) => args,
             None => {
@@ -192,40 +178,11 @@ fn expand_function(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, item
                 return item.node.clone();
             }
         };
-        let ty_args = ty_args(generics, sp);
-        let result_expr = assign_result_expr(cx, fn_ident, args.clone(), ty_args);
 
-        let new_block = new_block(cx, prefix_enter, prefix_exit, name, new_decl, result_expr, args);
+        let new_block = new_block(cx, prefix_enter, prefix_exit, name, block.clone(), args);
         ItemFn(decl.clone(), style, abi, generics.clone(), new_block)
     } else {
-        panic!("Expected ItemFn")
-    }
-}
-
-fn fn_decl(sp: Span, fn_ident: Ident, item: P<Item>) -> P<Stmt> {
-    match &item.node {
-        &ast::ItemFn(ref decl, style, abi, ref generics, ref body) => {
-            let inner = Item {
-                ident: fn_ident,
-                node: ast::ItemFn(decl.clone(), style, abi, generics.clone(), body.clone()),
-                .. (*item).clone() };
-
-            let inner = ast::DeclItem(P(inner));
-            let inner = P(Spanned{ node: inner, span: sp });
-
-            let stmt = ast::StmtDecl(inner, ast::DUMMY_NODE_ID);
-            P(Spanned{ node: stmt, span: sp })
-        }
-        _ => panic!("This should be checked by the caller")
-    }
-}
-
-fn assign_result_expr(cx: &mut ExtCtxt, fn_ident: Ident, arg_toks: Vec<TokenTree>,
-                      ty_arg_toks: Vec<TokenTree>) -> P<Stmt> {
-    if ty_arg_toks.is_empty() {
-        quote_stmt!(cx, let __trace_result = $fn_ident::<$ty_arg_toks>($arg_toks)).unwrap()
-    } else {
-        quote_stmt!(cx, let __trace_result = $fn_ident($arg_toks)).unwrap()
+        panic!("Expected a function")
     }
 }
 
@@ -242,17 +199,6 @@ fn args(cx: &ExtCtxt, decl: &ast::FnDecl, sp: Span) -> Option<Vec<TokenTree>> {
         .map(|a| cx.parse_tts(cm.span_to_snippet(a.pat.span).unwrap()))
         .collect::<Vec<_>>()
         .connect(&ast::TtToken(sp, token::Comma)))
-}
-
-fn ty_args(generics: &ast::Generics, sp: Span) -> Vec<TokenTree> {
-    generics.ty_params
-        .iter()
-        .map(|tp| vec![token::Ident(tp.ident, token::Plain)])
-        .collect::<Vec<_>>()
-        .connect(&token::Comma)
-        .into_iter()
-        .map(|t| ast::TtToken(sp, t))
-        .collect()
 }
 
 // Check that a pattern can trivially be used to instantiate that pattern.
@@ -288,7 +234,7 @@ fn get_idents(args: &[TokenTree], idents: &mut Vec<Ident>) {
 }
 
 fn new_block(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, name: &str,
-             inner_func: P<Stmt>, result_expr: P<Stmt>, args: Vec<TokenTree>) -> P<Block> {
+             block: P<Block>, args: Vec<TokenTree>) -> P<Block> {
     let mut idents = vec!();
     get_idents(&args, &mut idents);
     let args: Vec<TokenTree> = idents
@@ -313,8 +259,8 @@ fn new_block(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, name: &str
         let args = format!($arg_fmt_str, $args);
         println!("{}{} Entering {}({})", s, $prefix_enter, $name, args);
         depth += 1;
-        $inner_func;
-        $result_expr;
+        let __trace_closure = move || $block;
+        let __trace_result = __trace_closure();
         depth -= 1;
         println!("{}{} Exiting {} = {:?}", s, $prefix_exit, $name, __trace_result);
         __trace_result
