@@ -11,7 +11,7 @@ use rustc::plugin::Registry;
 
 use syntax::ptr::P;
 use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, ItemMod, Block, Stmt, Ident, TokenTree,
-                  Mod, ItemStatic};
+                  Mod, ItemStatic, ItemImpl, ImplItem};
 use syntax::ast::Expr_::ExprLit;
 use syntax::ast::Mutability::MutMutable;
 use syntax::ast::MetaItem_::{MetaList, MetaNameValue};
@@ -36,55 +36,18 @@ fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem, item: P<Item>) -> P
             cx.item(item.span, item.ident, item.attrs.clone(), new_item)
         }
         &ItemMod(ref m) => {
-            let mut new_items = vec!();
-            let mut depth_correct = false;
-            let mut depth_span = None;
-            for i in m.items.iter() {
-                match &i.node {
-                    &ItemFn(_, _, _, _, _) => {
-                        let new_item = expand_function(cx, prefix_enter, prefix_exit, i, i.span);
-                        new_items.push(cx.item(i.span, i.ident, i.attrs.clone(), new_item));
-                    }
-                    &ItemStatic(_, ref mut_, ref expr) => {
-                        let ref name = i.ident.name.as_str();
-                        if *name == "depth" {
-                            depth_span = Some(i.span);
-                            if let &MutMutable = mut_ {
-                                if let ExprLit(ref lit) = expr.node {
-                                    if let LitInt(ref val, _) = lit.node {
-                                        if *val == 0 {
-                                            depth_correct = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        new_items.push((*i).clone());
-                    }
-                    _ => {
-                        new_items.push((*i).clone());
-                    }
-                }
-            }
-            if let Some(sp) = depth_span {
-                if !depth_correct {
-                    cx.span_err(sp, "A static variable with the name `depth` was found, but \
-                                     either the mutability, the type, or the inital value are \
-                                     incorrect");
-                }
-            } else {
-                let depth_ident = Ident::new(intern("depth"));
-                let u32_ident = Ident::new(intern("u32"));
-                let ty = cx.ty_path(cx.path(codemap::DUMMY_SP, vec![u32_ident]));
-                let item_ = cx.item_static(codemap::DUMMY_SP, depth_ident, ty, MutMutable,
-                                           cx.expr_u32(codemap::DUMMY_SP, 0));
-                new_items.push(item_);
-            }
+            let new_items = expand_mod(cx, m, prefix_enter, prefix_exit);
             return cx.item(item.span, item.ident, item.attrs.clone(),
                            ItemMod(Mod { inner: m.inner, items: new_items }))
         }
+        &ItemImpl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
+            let new_items = expand_impl(cx, &**items, prefix_enter, prefix_exit);
+            return cx.item(item.span, item.ident, item.attrs.clone(),
+                           ItemImpl(safety, polarity, generics.clone(), traitref.clone(),
+                                    ty.clone(), new_items))
+        }
         _ => {
-            cx.span_err(sp, "trace is only permissible on functions or mods");
+            cx.span_err(sp, "trace is only permissible on functions, mods, or impls");
             item.clone()
         }
     }
@@ -109,6 +72,60 @@ fn get_prefixes(meta: &MetaItem) -> (&str, &str) {
         }
     }
     (prefix_enter, prefix_exit)
+}
+
+fn expand_impl(cx: &mut ExtCtxt, items: &[P<ImplItem>], prefix_enter: &str,
+               prefix_exit: &str) -> Vec<P<ImplItem>> {
+    unimplemented!()
+}
+
+fn expand_mod(cx: &mut ExtCtxt, m: &Mod, prefix_enter: &str, prefix_exit: &str) -> Vec<P<Item>> {
+    let mut new_items = vec!();
+    let mut depth_correct = false;
+    let mut depth_span = None;
+    for i in m.items.iter() {
+        match &i.node {
+            &ItemFn(_, _, _, _, _) => {
+                let new_item = expand_function(cx, prefix_enter, prefix_exit, i, i.span);
+                new_items.push(cx.item(i.span, i.ident, i.attrs.clone(), new_item));
+            }
+            &ItemStatic(_, ref mut_, ref expr) => {
+                let ref name = i.ident.name.as_str();
+                if *name == "depth" {
+                    depth_span = Some(i.span);
+                    if let &MutMutable = mut_ {
+                        if let ExprLit(ref lit) = expr.node {
+                            if let LitInt(ref val, _) = lit.node {
+                                if *val == 0 {
+                                    depth_correct = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                new_items.push((*i).clone());
+            }
+            _ => {
+                new_items.push((*i).clone());
+            }
+        }
+    }
+    if let Some(sp) = depth_span {
+        if !depth_correct {
+            cx.span_err(sp, "A static variable with the name `depth` was found, but \
+                             either the mutability, the type, or the inital value are \
+                             incorrect");
+        }
+    } else {
+        let depth_ident = Ident::new(intern("depth"));
+        let u32_ident = Ident::new(intern("u32"));
+        let ty = cx.ty_path(cx.path(codemap::DUMMY_SP, vec![u32_ident]));
+        let item_ = cx.item_static(codemap::DUMMY_SP, depth_ident, ty, MutMutable,
+                                   cx.expr_u32(codemap::DUMMY_SP, 0));
+        new_items.push(item_);
+    }
+
+    new_items
 }
 
 fn expand_function(cx: &mut ExtCtxt, prefix_enter: &str, prefix_exit: &str, item: &P<Item>,
