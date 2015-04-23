@@ -193,6 +193,12 @@ fn expand_mod(cx: &mut ExtCtxt, m: &Mod, options: Options) -> Vec<P<Item>> {
                 }
                 new_items.push((*i).clone());
             }
+            &ItemImpl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
+                let new_impl_items = expand_impl(cx, &**items, options.clone());
+                new_items.push(cx.item(i.span, i.ident, i.attrs.clone(),
+                                       ItemImpl(safety, polarity, generics.clone(), traitref.clone(),
+                                 ty.clone(), new_impl_items)));
+            }
             _ => {
                 new_items.push((*i).clone());
             }
