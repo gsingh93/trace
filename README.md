@@ -56,6 +56,8 @@ I'm in bar!
 
 - You can also use `#[trace]` on entire `impl`s or individual `impl` methods. See the `examples` folder for more details.
 
+- If you use `#[trace]` on a `mod` or `impl` as well as on a method or function inside one of those structures, then only the outermost `#[trace]` is used.
+
 ## Optional Arguments
 
 Trace takes a few optional arguments, described below:
@@ -67,6 +69,8 @@ Trace takes a few optional arguments, described below:
 - `enable` - When applied to a `mod` or `impl`, `enable` takes a list of function names to print, not printing any functions that are not part of this list. All functions are enabled by default. When applied to an `impl` method or a function, `enable` takes a list of arguments to print, not printing any arguments that are not part of the list. All arguments are enabled by default.
 
 - `disable` - When applied to a `mod` or `impl`, `disable` takes a list of function names to not print, printing all other functions in the `mod` or `impl`. No functions are disabled by default. When applied to an `impl` method or a function, `disable` takes a list of arguments to not print, printing all other arguments. No arguments are disabled by default.
+
+- `pause` - When given as an argument to `#[trace]`, execution is paused after each line of tracing output until enter is pressed. This allows you to trace through a program step by step.
 
 Note that `enable` and `disable` can not be used together, and doing so will result in an error.
 

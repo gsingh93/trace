@@ -74,13 +74,14 @@ struct Options {
     prefix_enter: String,
     prefix_exit: String,
     enable: Option<HashSet<String>>,
-    disable: Option<HashSet<String>>
+    disable: Option<HashSet<String>>,
+    pause: bool
 }
 
 impl Options {
     fn new() -> Options {
         Options { prefix_enter: "[+]".to_string(), prefix_exit: "[-]".to_string(),
-                  enable: None, disable: None }
+                  enable: None, disable: None, pause: false }
     }
 }
 
@@ -123,7 +124,13 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
                         cx.span_warn(i.span, &format!("Invalid option {}", name));
                     }
                 }
-                &MetaWord(ref name) => cx.span_warn(i.span, &format!("Invalid option {}", name))
+                &MetaWord(ref name) => {
+                    if *name == "pause" {
+                        options.pause = true;
+                    } else {
+                        cx.span_warn(i.span, &format!("Invalid option {}", name))
+                    }
+                }
             }
         }
     }
@@ -314,6 +321,7 @@ fn new_block(cx: &mut ExtCtxt, options: Options, name: &str, block: P<Block>,
 
     let prefix_enter = &*options.prefix_enter;
     let prefix_exit = &*options.prefix_exit;
+    let pause = options.pause;
 
     let new_block = quote_expr!(cx,
     unsafe {
@@ -321,11 +329,21 @@ fn new_block(cx: &mut ExtCtxt, options: Options, name: &str, block: P<Block>,
         (0..depth).map(|_| s.push(' ')).count();
         let args = format!($arg_fmt_str, $args);
         println!("{}{} Entering {}({})", s, $prefix_enter, $name, args);
+        if $pause {
+            use std::io::BufRead;
+            let stdin = std::io::stdin();
+            stdin.lock().lines().next();
+        }
         depth += 1;
         let __trace_closure = move || $block;
         let __trace_result = __trace_closure();
         depth -= 1;
         println!("{}{} Exiting {} = {:?}", s, $prefix_exit, $name, __trace_result);
+        if $pause {
+            use std::io::BufRead;
+            let stdin = std::io::stdin();
+            stdin.lock().lines().next();
+        }
         __trace_result
     });
     cx.block_expr(new_block)
