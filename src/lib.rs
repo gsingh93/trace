@@ -18,39 +18,55 @@ use syntax::ast::Mutability::MutMutable;
 use syntax::ast::MetaItem_::{MetaList, MetaNameValue};
 use syntax::ast::Lit_::{LitStr, LitInt};
 use syntax::codemap::{self, Span};
-use syntax::ext::base::ExtCtxt;
-use syntax::ext::base::SyntaxExtension::Modifier;
+use syntax::ext::base::{ExtCtxt, Annotatable};
+use syntax::ext::base::SyntaxExtension::MultiModifier;
 
 use syntax::ext::build::AstBuilder;
 use syntax::parse::token::{self, intern};
 
 #[plugin_registrar]
 pub fn registrar(reg: &mut Registry) {
-    reg.register_syntax_extension(intern("trace"), Modifier(Box::new(trace_expand)));
+    reg.register_syntax_extension(intern("trace"), MultiModifier(Box::new(trace_expand)));
 }
 
-fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem, item: P<Item>) -> P<Item> {
+fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem,
+                annotatable: Annotatable) -> Annotatable {
     let (prefix_enter, prefix_exit) = get_prefixes(meta);
-    match &item.node {
-        &ItemFn(..) => {
-            let new_item = expand_function(cx, prefix_enter, prefix_exit, &item);
-            cx.item(item.span, item.ident, item.attrs.clone(), new_item)
+    match annotatable {
+        Annotatable::Item(item) => {
+            let res = match &item.node {
+                &ItemFn(..) => {
+                    let new_item = expand_function(cx, prefix_enter, prefix_exit, &item);
+                    cx.item(item.span, item.ident, item.attrs.clone(), new_item)
+                }
+                &ItemMod(ref m) => {
+                    let new_items = expand_mod(cx, m, prefix_enter, prefix_exit);
+                    cx.item(item.span, item.ident, item.attrs.clone(),
+                            ItemMod(Mod { inner: m.inner, items: new_items }))
+                }
+                &ItemImpl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
+                    let new_items = expand_impl(cx, &**items, prefix_enter, prefix_exit);
+                    cx.item(item.span, item.ident, item.attrs.clone(),
+                            ItemImpl(safety, polarity, generics.clone(), traitref.clone(),
+                                     ty.clone(), new_items))
+                }
+                _ => {
+                    cx.span_err(sp, "trace is only permissible on functions, mods, or impls");
+                    item.clone()
+                }
+            };
+            Annotatable::Item(res)
         }
-        &ItemMod(ref m) => {
-            let new_items = expand_mod(cx, m, prefix_enter, prefix_exit);
-            return cx.item(item.span, item.ident, item.attrs.clone(),
-                           ItemMod(Mod { inner: m.inner, items: new_items }))
+        Annotatable::ImplItem(item) => {
+            let new_item = expand_impl_method(cx, prefix_enter, prefix_exit, &item);
+            Annotatable::ImplItem(
+                P(ImplItem { node: new_item, attrs: vec!(), .. (*item).clone() }))
         }
-        &ItemImpl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
-            let new_items = expand_impl(cx, &**items, prefix_enter, prefix_exit);
-            return cx.item(item.span, item.ident, item.attrs.clone(),
-                           ItemImpl(safety, polarity, generics.clone(), traitref.clone(),
-                                    ty.clone(), new_items))
+        Annotatable::TraitItem(_) => {
+            cx.span_err(sp, "trace is not applicable to trait items");
+            annotatable.clone()
         }
-        _ => {
-            cx.span_err(sp, "trace is only permissible on functions, mods, or impls");
-            item.clone()
-        }
+
     }
 }
 
