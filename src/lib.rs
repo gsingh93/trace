@@ -330,18 +330,18 @@ fn new_block(cx: &mut ExtCtxt, options: Options, name: &str, block: P<Block>,
         let args = format!($arg_fmt_str, $args);
         println!("{}{} Entering {}({})", s, $prefix_enter, $name, args);
         if $pause {
-            use std::io::BufRead;
-            let stdin = std::io::stdin();
+            use std::io::{BufRead, stdin};
+            let stdin = stdin();
             stdin.lock().lines().next();
         }
         depth += 1;
-        let __trace_closure = move || $block;
+        let mut __trace_closure = move || $block;
         let __trace_result = __trace_closure();
         depth -= 1;
         println!("{}{} Exiting {} = {:?}", s, $prefix_exit, $name, __trace_result);
         if $pause {
-            use std::io::BufRead;
-            let stdin = std::io::stdin();
+            use std::io::{BufRead, stdin};
+            let stdin = stdin();
             stdin.lock().lines().next();
         }
         __trace_result
