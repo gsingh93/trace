@@ -3,9 +3,7 @@ trace [![](https://meritbadge.herokuapp.com/trace)](https://crates.io/crates/tra
 
 A syntax extension for tracing the execution of functions. Adding `#[trace]` to the top of any function will insert `println!` statements at the beginning and end of that function, notifying you of when that function was entered and exited and printing the argument and return values. This is useful for quickly debugging whether functions that are supposed to be called are actually called without manually inserting print statements.
 
-See the limitations section below for what this extension currently can't do.
-
-Note that this extension requires all arguments to the function and the return value to have types that implement `Debug`.
+Note that this extension requires all arguments to the function and the return value to have types that implement `Debug`. You can disable the printing of certain arguments if necessary (described below).
 
 ## Installation
 
@@ -52,13 +50,24 @@ I'm in bar!
 [-] Exiting foo = ()
 ```
 
-Note that you can customize the prefix of the `println!` statement with `prefix_enter` and `prefix_exit`. The `depth` variable must be a global `static mut` variable, it's used for indenting the output.
+- Note the `depth` variable must be a global `static mut` variable, it's used for indenting the output. The only time it can be omitted is when `#[trace]` is applied to `mod`s, as described below.
 
-You can use `#[trace]` on `mod`s as well. To apply `#[trace]` to all functions in the current `mod`, put `#![trace]` (note the `!`) at the top of the file. When using `#[trace]` on `mod`s, the `depth` variable doesn't need to be defined (it's defined for you automatically). Note that the `depth` variable isn't shared between `mod`s, so indentation won't be perfect when tracing functions in multiple `mod`s.
+- You can use `#[trace]` on `mod`s as well. To apply `#[trace]` to all functions in the current `mod`, put `#![trace]` (note the `!`) at the top of the file. When using `#[trace]` on `mod`s, the `depth` variable doesn't need to be defined (it's defined for you automatically). Note that the `depth` variable isn't shared between `mod`s, so indentation won't be perfect when tracing functions in multiple `mod`s.
 
-You can also use `#[trace]` on entire `impl`s or individual `impl` methods. See the `examples` folder for more details.
+- You can also use `#[trace]` on entire `impl`s or individual `impl` methods. See the `examples` folder for more details.
 
-## Limitations
+## Optional Arguments
 
-- It would be nice to enable/disable the tracing of particular methods directly from the attribute on the `impl` or `mod` instead of the removing/adding the attribute to individual functions. This should be added soon.
-- It would be nice to enable/disable the printing of arguments/return values from the attribute, especially since printing requires the types to implement `Debug`. This should be added soon.
+Trace takes a few optional arguments, described below:
+
+- `prefix_enter` - The prefix of the `println!` statement when a function is entered. Defaults to `[+]`.
+
+- `prefix_exit` - The prefix of the `println!` statement when a function is exited. Defaults to `[-]`.
+
+- `enable` - When applied to a `mod` or `impl`, `enable` takes a list of function names to print, not printing any functions that are not part of this list. All functions are enabled by default. When applied to an `impl` method or a function, `enable` takes a list of arguments to print, not printing any arguments that are not part of the list. All arguments are enabled by default.
+
+- `disable` - When applied to a `mod` or `impl`, `disable` takes a list of function names to not print, printing all other functions in the `mod` or `impl`. No functions are disabled by default. When applied to an `impl` method or a function, `disable` takes a list of arguments to not print, printing all other arguments. No arguments are disabled by default.
+
+Note that `enable` and `disable` can not be used together, and doing so will result in an error.
+
+All of these options are covered in the `examples` folder.
