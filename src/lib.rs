@@ -242,10 +242,10 @@ fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: b
         }
     }
 
-    if let &ItemFn(ref decl, style, abi, ref generics, ref block) = &item.node {
+    if let &ItemFn(ref decl, style, constness, abi, ref generics, ref block) = &item.node {
         let idents = arg_idents(&**decl);
         let new_block = new_block(cx, options, name, block.clone(), idents, direct);
-        ItemFn(decl.clone(), style, abi, generics.clone(), new_block)
+        ItemFn(decl.clone(), style, constness, abi, generics.clone(), new_block)
     } else {
         panic!("Expected a function")
     }
@@ -255,7 +255,7 @@ fn arg_idents(decl: &FnDecl) -> Vec<Ident> {
     fn extract_idents(pat: &ast::Pat_, idents: &mut Vec<Ident>) {
         match pat {
             &ast::PatWild(_) | &ast::PatMac(_) | &ast::PatEnum(_, None) | &ast::PatLit(_)
-                | &ast::PatRange(..) => (),
+                | &ast::PatRange(..) | &ast::PatQPath(..) => (),
             &ast::PatIdent(_, sp, _) => if sp.node.as_str() != "self" { idents.push(sp.node) },
             &ast::PatEnum(_, Some(ref v)) | &ast::PatTup(ref v) => {
                 for p in v {
