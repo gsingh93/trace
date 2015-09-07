@@ -1,4 +1,4 @@
-#![feature(quote, plugin_registrar, rustc_private, collections)]
+#![feature(quote, plugin_registrar, rustc_private, collections,slice_concat_ext)]
 
 extern crate syntax;
 extern crate rustc;
@@ -153,13 +153,13 @@ fn expand_impl(cx: &mut ExtCtxt, items: &[P<ImplItem>], options: Options) -> Vec
 
 fn expand_impl_method(cx: &mut ExtCtxt, options: Options, item: &ImplItem,
                       direct: bool) -> ImplItem_ {
-    let ref name = item.ident.name.as_str();
+    let name = &*item.ident.name.as_str();
 
     // If the attribute is not directly on this method, we filter by function names
     if !direct {
         match (&options.enable, &options.disable) {
-            (&Some(ref s), &None) => if !s.contains(*name) { return item.node.clone() },
-            (&None, &Some(ref s)) => if s.contains(*name) { return item.node.clone() },
+            (&Some(ref s), &None) => if !s.contains(name) { return item.node.clone() },
+            (&None, &Some(ref s)) => if s.contains(name) { return item.node.clone() },
             (&Some(_), &Some(_)) => unreachable!(),
             _ => ()
         }
@@ -230,7 +230,7 @@ fn expand_mod(cx: &mut ExtCtxt, m: &Mod, options: Options) -> Vec<P<Item>> {
 }
 
 fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: bool) -> Item_ {
-    let ref name = item.ident.name.as_str();
+    let ref name = &*item.ident.name.as_str();
 
     // If the attribute is not directly on this method, we filter by function names
     if !direct {
@@ -256,7 +256,7 @@ fn arg_idents(decl: &FnDecl) -> Vec<Ident> {
         match pat {
             &ast::PatWild(_) | &ast::PatMac(_) | &ast::PatEnum(_, None) | &ast::PatLit(_)
                 | &ast::PatRange(..) | &ast::PatQPath(..) => (),
-            &ast::PatIdent(_, sp, _) => if sp.node.as_str() != "self" { idents.push(sp.node) },
+            &ast::PatIdent(_, sp, _) => if &*sp.node.name.as_str() != "self" { idents.push(sp.node) },
             &ast::PatEnum(_, Some(ref v)) | &ast::PatTup(ref v) => {
                 for p in v {
                     extract_idents(&p.node, idents);
@@ -294,9 +294,9 @@ fn new_block(cx: &mut ExtCtxt, options: Options, name: &str, block: P<Block>,
     let idents = if direct {
         match (&options.enable, &options.disable) {
             (&Some(ref s), &None) =>
-                idents.into_iter().filter(|x| s.contains(x.name.as_str())).collect(),
+                idents.into_iter().filter(|x| s.contains(&*x.name.as_str())).collect(),
             (&None, &Some(ref s)) =>
-                idents.into_iter().filter(|x| !s.contains(x.name.as_str())).collect(),
+                idents.into_iter().filter(|x| !s.contains(&*x.name.as_str())).collect(),
             (&Some(_), &Some(_)) => unreachable!(),
             _ => idents
         }
