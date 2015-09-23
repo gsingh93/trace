@@ -1,4 +1,4 @@
-#![feature(quote, plugin_registrar, rustc_private, collections,slice_concat_ext)]
+#![feature(quote, plugin_registrar, rustc_private, slice_concat_ext)]
 
 extern crate syntax;
 extern crate rustc;
@@ -308,7 +308,7 @@ fn new_block(cx: &mut ExtCtxt, options: Options, name: &str, block: P<Block>,
         .iter()
         .map(|ident| vec![token::Ident((*ident).clone(), token::Plain)])
         .collect::<Vec<_>>()
-        .connect(&token::Comma)
+        .join(&token::Comma)
         .into_iter()
         .map(|t| ast::TtToken(codemap::DUMMY_SP, t))
         .collect();
@@ -317,7 +317,7 @@ fn new_block(cx: &mut ExtCtxt, options: Options, name: &str, block: P<Block>,
     for ident in idents.iter() {
         arg_fmt.push(format!("{}: {{:?}}", ident))
     }
-    let arg_fmt_str = &*arg_fmt.connect(", ");
+    let arg_fmt_str = &*arg_fmt.join(", ");
 
     let prefix_enter = &*options.prefix_enter;
     let prefix_exit = &*options.prefix_exit;
