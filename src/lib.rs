@@ -218,8 +218,8 @@ fn expand_mod(cx: &mut ExtCtxt, m: &Mod, options: Options) -> Vec<P<Item>> {
                              incorrect");
         }
     } else {
-        let depth_ident = Ident::new(intern("depth"));
-        let u32_ident = Ident::new(intern("u32"));
+        let depth_ident = Ident::with_empty_ctxt(intern("depth"));
+        let u32_ident = Ident::with_empty_ctxt(intern("u32"));
         let ty = cx.ty_path(cx.path(codemap::DUMMY_SP, vec![u32_ident]));
         let item_ = cx.item_static(codemap::DUMMY_SP, depth_ident, ty, MutMutable,
                                    cx.expr_u32(codemap::DUMMY_SP, 0));
