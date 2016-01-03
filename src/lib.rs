@@ -1,17 +1,16 @@
 #![feature(quote, plugin_registrar, rustc_private, slice_concat_ext)]
 
 extern crate syntax;
-extern crate rustc;
+extern crate rustc_plugin;
 
 use std::slice::SliceConcatExt;
 use std::collections::HashSet;
 
-use rustc::plugin::Registry;
+use rustc_plugin::Registry;
 
 use syntax::ptr::P;
 use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, ItemMod, Block, Ident, TokenTree, FnDecl,
-                  Mod, ItemStatic, ItemImpl, ImplItem, ImplItem_};
-use syntax::ast::ImplItem_::MethodImplItem;
+                  Mod, ItemStatic, ItemImpl, ImplItem, ImplItemKind};
 use syntax::ast::Expr_::ExprLit;
 use syntax::ast::Mutability::MutMutable;
 use syntax::ast::MetaItem_::{MetaList, MetaNameValue, MetaWord};
@@ -19,7 +18,6 @@ use syntax::ast::Lit_::{LitStr, LitInt};
 use syntax::codemap::{self, Span};
 use syntax::ext::base::{ExtCtxt, Annotatable};
 use syntax::ext::base::SyntaxExtension::MultiModifier;
-use syntax::ext::quote::rt::ExtParseUtils;
 use syntax::ext::quote::rt::ToTokens;
 use syntax::ext::build::AstBuilder;
 use syntax::parse::token::{self, intern};
@@ -143,7 +141,7 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
 fn expand_impl(cx: &mut ExtCtxt, items: &[P<ImplItem>], options: Options) -> Vec<P<ImplItem>> {
     let mut new_items = vec!();
     for item in items.iter() {
-        if let MethodImplItem(..) = item.node {
+        if let ImplItemKind::Method(..) = item.node {
             let new_item = expand_impl_method(cx, options.clone(), item, false);
             new_items.push(P(ImplItem { node: new_item, attrs: vec!(), .. (**item).clone() }));
         }
@@ -152,7 +150,7 @@ fn expand_impl(cx: &mut ExtCtxt, items: &[P<ImplItem>], options: Options) -> Vec
 }
 
 fn expand_impl_method(cx: &mut ExtCtxt, options: Options, item: &ImplItem,
-                      direct: bool) -> ImplItem_ {
+                      direct: bool) -> ImplItemKind {
     let name = &*item.ident.name.as_str();
 
     // If the attribute is not directly on this method, we filter by function names
@@ -165,10 +163,10 @@ fn expand_impl_method(cx: &mut ExtCtxt, options: Options, item: &ImplItem,
         }
     }
 
-    if let &MethodImplItem(ref sig, ref block) = &item.node {
+    if let &ImplItemKind::Method(ref sig, ref block) = &item.node {
         let idents = arg_idents(&sig.decl);
         let new_block = new_block(cx, options, name, block.clone(), idents, direct);
-        MethodImplItem(sig.clone(), new_block)
+        ImplItemKind::Method(sig.clone(), new_block)
     } else {
         panic!("Expected method");
     }
@@ -254,7 +252,7 @@ fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: b
 fn arg_idents(decl: &FnDecl) -> Vec<Ident> {
     fn extract_idents(pat: &ast::Pat_, idents: &mut Vec<Ident>) {
         match pat {
-            &ast::PatWild(_) | &ast::PatMac(_) | &ast::PatEnum(_, None) | &ast::PatLit(_)
+            &ast::PatWild | &ast::PatMac(_) | &ast::PatEnum(_, None) | &ast::PatLit(_)
                 | &ast::PatRange(..) | &ast::PatQPath(..) => (),
             &ast::PatIdent(_, sp, _) => if &*sp.node.name.as_str() != "self" { idents.push(sp.node) },
             &ast::PatEnum(_, Some(ref v)) | &ast::PatTup(ref v) => {
@@ -310,7 +308,7 @@ fn new_block(cx: &mut ExtCtxt, options: Options, name: &str, block: P<Block>,
         .collect::<Vec<_>>()
         .join(&token::Comma)
         .into_iter()
-        .map(|t| ast::TtToken(codemap::DUMMY_SP, t))
+        .map(|t| TokenTree::Token(codemap::DUMMY_SP, t))
         .collect();
 
     let mut arg_fmt = vec!();
