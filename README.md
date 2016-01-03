@@ -1,4 +1,4 @@
-trace [![](https://meritbadge.herokuapp.com/trace)](https://crates.io/crates/trace)
+trace [![](https://meritbadge.herokuapp.com/trace)](https://crates.io/crates/trace) [![Build Status](https://travis-ci.org/gsingh93/trace.svg?branch=master)](https://travis-ci.org/gsingh93/trace)
 -----
 
 A syntax extension for tracing the execution of functions. Adding `#[trace]` to the top of any function will insert `println!` statements at the beginning and end of that function, notifying you of when that function was entered and exited and printing the argument and return values. This is useful for quickly debugging whether functions that are supposed to be called are actually called without manually inserting print statements.
