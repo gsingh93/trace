@@ -165,7 +165,7 @@ fn expand_impl_method(cx: &mut ExtCtxt, options: Options, item: &ImplItem,
     }
 
     if let &ImplItemKind::Method(ref sig, ref block) = &item.node {
-        let idents = arg_idents(&sig.decl);
+        let idents = arg_idents(cx, &sig.decl);
         let new_block = new_block(cx, options, name, block.clone(), idents, direct);
         ImplItemKind::Method(sig.clone(), new_block)
     } else {
@@ -242,7 +242,7 @@ fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: b
     }
 
     if let &Fn(ref decl, style, constness, abi, ref generics, ref block) = &item.node {
-        let idents = arg_idents(&**decl);
+        let idents = arg_idents(cx, &**decl);
         let new_block = new_block(cx, options, name, block.clone(), idents, direct);
         Fn(decl.clone(), style, constness, abi, generics.clone(), new_block)
     } else {
@@ -250,10 +250,10 @@ fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: b
     }
 }
 
-fn arg_idents(decl: &FnDecl) -> Vec<Ident> {
-    fn extract_idents(pat: &ast::PatKind, idents: &mut Vec<Ident>) {
+fn arg_idents(cx: &mut ExtCtxt, decl: &FnDecl) -> Vec<Ident> {
+    fn extract_idents(cx: &mut ExtCtxt, pat: &ast::PatKind, idents: &mut Vec<Ident>) {
         match pat {
-            &PatKind::Wild | &PatKind::Mac(_) | &PatKind::TupleStruct(_, None) | &PatKind::Lit(_)
+            &PatKind::Wild | &PatKind::TupleStruct(_, None) | &PatKind::Lit(_)
                 | &PatKind::Range(..) | &PatKind::Path(..) | &PatKind::QPath(..) => (),
             &PatKind::Ident(_, sp, _) => {
                 if &*sp.node.name.as_str() != "self" {
@@ -262,31 +262,35 @@ fn arg_idents(decl: &FnDecl) -> Vec<Ident> {
             },
             &PatKind::TupleStruct(_, Some(ref v)) | &PatKind::Tup(ref v) => {
                 for p in v {
-                    extract_idents(&p.node, idents);
+                    extract_idents(cx, &p.node, idents);
                 }
             }
             &PatKind::Struct(_, ref v, _) => {
                 for p in v {
-                    extract_idents(&p.node.pat.node, idents);
+                    extract_idents(cx, &p.node.pat.node, idents);
                 }
             }
             &PatKind::Vec(ref v1, ref opt, ref v2) => {
                 for p in v1 {
-                    extract_idents(&p.node, idents);
+                    extract_idents(cx, &p.node, idents);
                 }
                 if let &Some(ref p) = opt {
-                    extract_idents(&p.node, idents);
+                    extract_idents(cx, &p.node, idents);
                 }
                 for p in v2 {
-                    extract_idents(&p.node, idents);
+                    extract_idents(cx, &p.node, idents);
                 }
             }
-            &PatKind::Box(ref p) | &PatKind::Ref(ref p, _) => extract_idents(&p.node, idents),
+            &PatKind::Box(ref p) | &PatKind::Ref(ref p, _) => extract_idents(cx, &p.node, idents),
+            &PatKind::Mac(ref m) => {
+                let sp = m.node.path.span;
+                cx.span_err(sp, "trace does not work on functions with macros in the arg list");
+            }
         }
     }
     let mut idents = vec!();
     for arg in decl.inputs.iter() {
-        extract_idents(&arg.pat.node, &mut idents);
+        extract_idents(cx, &arg.pat.node, &mut idents);
     }
     idents
 }
