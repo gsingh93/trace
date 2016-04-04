@@ -9,12 +9,13 @@ use std::collections::HashSet;
 use rustc_plugin::Registry;
 
 use syntax::ptr::P;
-use syntax::ast::{self, Item, Item_, MetaItem, ItemFn, ItemMod, Block, Ident, TokenTree, FnDecl,
-                  Mod, ItemStatic, ItemImpl, ImplItem, ImplItemKind};
-use syntax::ast::Expr_::ExprLit;
-use syntax::ast::Mutability::MutMutable;
-use syntax::ast::MetaItem_::{MetaList, MetaNameValue, MetaWord};
-use syntax::ast::Lit_::{LitStr, LitInt};
+use syntax::ast::{self, Item, ItemKind, MetaItem, Block, Ident, TokenTree, FnDecl, ImplItem,
+                  ImplItemKind, PatKind};
+use syntax::ast::ExprKind::Lit;
+use syntax::ast::ItemKind::{Fn, Mod, Impl, Static};
+use syntax::ast::Mutability::Mutable;
+use syntax::ast::MetaItemKind::{List, NameValue, Word};
+use syntax::ast::LitKind::{Str, Int};
 use syntax::codemap::{self, Span};
 use syntax::ext::base::{ExtCtxt, Annotatable};
 use syntax::ext::base::SyntaxExtension::MultiModifier;
@@ -33,19 +34,19 @@ fn trace_expand(cx: &mut ExtCtxt, sp: Span, meta: &MetaItem,
     match annotatable {
         Annotatable::Item(item) => {
             let res = match &item.node {
-                &ItemFn(..) => {
+                &Fn(..) => {
                     let new_item = expand_function(cx, options, &item, true);
                     cx.item(item.span, item.ident, item.attrs.clone(), new_item)
                 }
-                &ItemMod(ref m) => {
+                &Mod(ref m) => {
                     let new_items = expand_mod(cx, m, options);
                     cx.item(item.span, item.ident, item.attrs.clone(),
-                            ItemMod(Mod { inner: m.inner, items: new_items }))
+                            Mod(ast::Mod { inner: m.inner, items: new_items }))
                 }
-                &ItemImpl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
-                    let new_items = expand_impl(cx, &**items, options);
+                &Impl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
+                    let new_items = expand_impl(cx, &*items, options);
                     cx.item(item.span, item.ident, item.attrs.clone(),
-                            ItemImpl(safety, polarity, generics.clone(), traitref.clone(),
+                            Impl(safety, polarity, generics.clone(), traitref.clone(),
                                      ty.clone(), new_items))
                 }
                 _ => {
@@ -88,8 +89,8 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
         let mut v = HashSet::new();
         for item in list {
             match &item.node {
-                &MetaWord(ref item_name) => { v.insert(item_name.to_string()); },
-                &MetaList(ref item_name, _) | &MetaNameValue(ref item_name, _) =>
+                &Word(ref item_name) => { v.insert(item_name.to_string()); },
+                &List(ref item_name, _) | &NameValue(ref item_name, _) =>
                     cx.span_warn(item.span, &format!("Invalid option {}", item_name))
             }
         }
@@ -97,23 +98,23 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
     }
 
     let mut options = Options::new();
-    if let MetaList(_, ref v) = meta.node {
+    if let List(_, ref v) = meta.node {
         for i in v {
             match &i.node {
-                &MetaNameValue(ref name, ref s) => {
+                &NameValue(ref name, ref s) => {
                     if *name == "prefix_enter" {
-                        if let LitStr(ref new_prefix, _) = s.node {
+                        if let Str(ref new_prefix, _) = s.node {
                             options.prefix_enter = new_prefix.to_string();
                         }
                     } else if *name == "prefix_exit" {
-                        if let LitStr(ref new_prefix, _) = s.node {
+                        if let Str(ref new_prefix, _) = s.node {
                             options.prefix_exit = new_prefix.to_string();
                         }
                     } else {
                         cx.span_warn(i.span, &format!("Invalid option {}", name));
                     }
                 }
-                &MetaList(ref name, ref list) =>  {
+                &List(ref name, ref list) =>  {
                     if *name == "enable" {
                         options.enable = Some(meta_list_to_set(cx, list));
                     } else if *name == "disable" {
@@ -122,7 +123,7 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
                         cx.span_warn(i.span, &format!("Invalid option {}", name));
                     }
                 }
-                &MetaWord(ref name) => {
+                &Word(ref name) => {
                     if *name == "pause" {
                         options.pause = true;
                     } else {
@@ -138,12 +139,12 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
     options
 }
 
-fn expand_impl(cx: &mut ExtCtxt, items: &[P<ImplItem>], options: Options) -> Vec<P<ImplItem>> {
+fn expand_impl(cx: &mut ExtCtxt, items: &[ImplItem], options: Options) -> Vec<ImplItem> {
     let mut new_items = vec!();
     for item in items.iter() {
         if let ImplItemKind::Method(..) = item.node {
             let new_item = expand_impl_method(cx, options.clone(), item, false);
-            new_items.push(P(ImplItem { node: new_item, attrs: vec!(), .. (**item).clone() }));
+            new_items.push(ImplItem { node: new_item, attrs: vec!(), .. (*item).clone() });
         }
     }
     new_items
@@ -172,23 +173,23 @@ fn expand_impl_method(cx: &mut ExtCtxt, options: Options, item: &ImplItem,
     }
 }
 
-fn expand_mod(cx: &mut ExtCtxt, m: &Mod, options: Options) -> Vec<P<Item>> {
+fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> {
     let mut new_items = vec!();
     let mut depth_correct = false;
     let mut depth_span = None;
     for i in m.items.iter() {
         match &i.node {
-            &ItemFn(..) => {
+            &Fn(..) => {
                 let new_item = expand_function(cx, options.clone(), i, false);
                 new_items.push(cx.item(i.span, i.ident, i.attrs.clone(), new_item));
             }
-            &ItemStatic(_, ref mut_, ref expr) => {
+            &Static(_, ref mut_, ref expr) => {
                 let ref name = i.ident.name.as_str();
                 if *name == "depth" {
                     depth_span = Some(i.span);
-                    if let &MutMutable = mut_ {
-                        if let ExprLit(ref lit) = expr.node {
-                            if let LitInt(ref val, _) = lit.node {
+                    if let &Mutable = mut_ {
+                        if let Lit(ref lit) = expr.node {
+                            if let Int(ref val, _) = lit.node {
                                 if *val == 0 {
                                     depth_correct = true;
                                 }
@@ -198,10 +199,10 @@ fn expand_mod(cx: &mut ExtCtxt, m: &Mod, options: Options) -> Vec<P<Item>> {
                 }
                 new_items.push((*i).clone());
             }
-            &ItemImpl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
+            &Impl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
                 let new_impl_items = expand_impl(cx, &**items, options.clone());
                 new_items.push(cx.item(i.span, i.ident, i.attrs.clone(),
-                                       ItemImpl(safety, polarity, generics.clone(), traitref.clone(),
+                                       Impl(safety, polarity, generics.clone(), traitref.clone(),
                                  ty.clone(), new_impl_items)));
             }
             _ => {
@@ -219,7 +220,7 @@ fn expand_mod(cx: &mut ExtCtxt, m: &Mod, options: Options) -> Vec<P<Item>> {
         let depth_ident = Ident::with_empty_ctxt(intern("depth"));
         let u32_ident = Ident::with_empty_ctxt(intern("u32"));
         let ty = cx.ty_path(cx.path(codemap::DUMMY_SP, vec![u32_ident]));
-        let item_ = cx.item_static(codemap::DUMMY_SP, depth_ident, ty, MutMutable,
+        let item_ = cx.item_static(codemap::DUMMY_SP, depth_ident, ty, Mutable,
                                    cx.expr_u32(codemap::DUMMY_SP, 0));
         new_items.push(item_);
     }
@@ -227,7 +228,7 @@ fn expand_mod(cx: &mut ExtCtxt, m: &Mod, options: Options) -> Vec<P<Item>> {
     new_items
 }
 
-fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: bool) -> Item_ {
+fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: bool) -> ItemKind {
     let ref name = &*item.ident.name.as_str();
 
     // If the attribute is not directly on this method, we filter by function names
@@ -240,32 +241,36 @@ fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: b
         }
     }
 
-    if let &ItemFn(ref decl, style, constness, abi, ref generics, ref block) = &item.node {
+    if let &Fn(ref decl, style, constness, abi, ref generics, ref block) = &item.node {
         let idents = arg_idents(&**decl);
         let new_block = new_block(cx, options, name, block.clone(), idents, direct);
-        ItemFn(decl.clone(), style, constness, abi, generics.clone(), new_block)
+        Fn(decl.clone(), style, constness, abi, generics.clone(), new_block)
     } else {
         panic!("Expected a function")
     }
 }
 
 fn arg_idents(decl: &FnDecl) -> Vec<Ident> {
-    fn extract_idents(pat: &ast::Pat_, idents: &mut Vec<Ident>) {
+    fn extract_idents(pat: &ast::PatKind, idents: &mut Vec<Ident>) {
         match pat {
-            &ast::PatWild | &ast::PatMac(_) | &ast::PatEnum(_, None) | &ast::PatLit(_)
-                | &ast::PatRange(..) | &ast::PatQPath(..) => (),
-            &ast::PatIdent(_, sp, _) => if &*sp.node.name.as_str() != "self" { idents.push(sp.node) },
-            &ast::PatEnum(_, Some(ref v)) | &ast::PatTup(ref v) => {
+            &PatKind::Wild | &PatKind::Mac(_) | &PatKind::TupleStruct(_, None) | &PatKind::Lit(_)
+                | &PatKind::Range(..) | &PatKind::Path(..) | &PatKind::QPath(..) => (),
+            &PatKind::Ident(_, sp, _) => {
+                if &*sp.node.name.as_str() != "self" {
+                    idents.push(sp.node);
+                }
+            },
+            &PatKind::TupleStruct(_, Some(ref v)) | &PatKind::Tup(ref v) => {
                 for p in v {
                     extract_idents(&p.node, idents);
                 }
             }
-            &ast::PatStruct(_, ref v, _) => {
+            &PatKind::Struct(_, ref v, _) => {
                 for p in v {
                     extract_idents(&p.node.pat.node, idents);
                 }
             }
-            &ast::PatVec(ref v1, ref opt, ref v2) => {
+            &PatKind::Vec(ref v1, ref opt, ref v2) => {
                 for p in v1 {
                     extract_idents(&p.node, idents);
                 }
@@ -276,7 +281,7 @@ fn arg_idents(decl: &FnDecl) -> Vec<Ident> {
                     extract_idents(&p.node, idents);
                 }
             }
-            &ast::PatBox(ref p) | &ast::PatRegion(ref p, _) => extract_idents(&p.node, idents),
+            &PatKind::Box(ref p) | &PatKind::Ref(ref p, _) => extract_idents(&p.node, idents),
         }
     }
     let mut idents = vec!();
