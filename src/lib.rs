@@ -284,7 +284,7 @@ fn arg_idents(cx: &mut ExtCtxt, decl: &FnDecl) -> Vec<Ident> {
             &PatKind::Box(ref p) | &PatKind::Ref(ref p, _) => extract_idents(cx, &p.node, idents),
             &PatKind::Mac(ref m) => {
                 let sp = m.node.path.span;
-                cx.span_err(sp, "trace does not work on functions with macros in the arg list");
+                cx.span_warn(sp, "trace ignores pattern macros in function arguments");
             }
         }
     }
