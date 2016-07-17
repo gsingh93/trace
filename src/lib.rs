@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use rustc_plugin::Registry;
 
 use syntax::ptr::P;
-use syntax::ast::{self, Item, ItemKind, MetaItem, Block, Ident, TokenTree, FnDecl, ImplItem,
+use syntax::ast::{self, Item, ItemKind, MetaItem, Block, Ident, FnDecl, ImplItem,
                   ImplItemKind, PatKind};
 use syntax::ast::ExprKind::Lit;
 use syntax::ast::ItemKind::{Fn, Mod, Impl, Static};
@@ -22,6 +22,7 @@ use syntax::ext::base::SyntaxExtension::MultiModifier;
 use syntax::ext::quote::rt::ToTokens;
 use syntax::ext::build::AstBuilder;
 use syntax::parse::token::{self, intern};
+use syntax::tokenstream::TokenTree;
 
 #[plugin_registrar]
 pub fn registrar(reg: &mut Registry) {
@@ -253,14 +254,14 @@ fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: b
 fn arg_idents(cx: &mut ExtCtxt, decl: &FnDecl) -> Vec<Ident> {
     fn extract_idents(cx: &mut ExtCtxt, pat: &ast::PatKind, idents: &mut Vec<Ident>) {
         match pat {
-            &PatKind::Wild | &PatKind::TupleStruct(_, None) | &PatKind::Lit(_)
-                | &PatKind::Range(..) | &PatKind::Path(..) | &PatKind::QPath(..) => (),
+            &PatKind::Wild | &PatKind::TupleStruct(_, _, None) | &PatKind::Lit(_)
+                | &PatKind::Range(..) | &PatKind::Path(..) => (),
             &PatKind::Ident(_, sp, _) => {
                 if &*sp.node.name.as_str() != "self" {
                     idents.push(sp.node);
                 }
             },
-            &PatKind::TupleStruct(_, Some(ref v)) | &PatKind::Tup(ref v) => {
+            &PatKind::TupleStruct(_, ref v, _) | &PatKind::Tuple(ref v, _) => {
                 for p in v {
                     extract_idents(cx, &p.node, idents);
                 }
@@ -313,7 +314,7 @@ fn new_block(cx: &mut ExtCtxt, options: Options, name: &str, block: P<Block>,
 
     let args: Vec<TokenTree> = idents
         .iter()
-        .map(|ident| vec![token::Ident((*ident).clone(), token::Plain)])
+        .map(|ident| vec![token::Ident((*ident).clone())])
         .collect::<Vec<_>>()
         .join(&token::Comma)
         .into_iter()
