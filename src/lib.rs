@@ -19,7 +19,6 @@ use syntax::ast::LitKind::{Str, Int};
 use syntax::codemap::{self, Span};
 use syntax::ext::base::{ExtCtxt, Annotatable};
 use syntax::ext::base::SyntaxExtension::MultiModifier;
-use syntax::ext::quote::rt::ToTokens;
 use syntax::ext::build::AstBuilder;
 use syntax::parse::token::{self, intern};
 use syntax::tokenstream::TokenTree;
@@ -37,12 +36,12 @@ fn trace_expand(cx: &mut ExtCtxt,
     let options = get_options(cx, meta);
     match annotatable {
         Annotatable::Item(item) => {
-            let res = match &item.node {
-                &Fn(..) => {
+            let res = match item.node {
+                Fn(..) => {
                     let new_item = expand_function(cx, options, &item, true);
                     cx.item(item.span, item.ident, item.attrs.clone(), new_item)
                 }
-                &Mod(ref m) => {
+                Mod(ref m) => {
                     let new_items = expand_mod(cx, m, options);
                     cx.item(item.span,
                             item.ident,
@@ -52,7 +51,7 @@ fn trace_expand(cx: &mut ExtCtxt,
                                 items: new_items,
                             }))
                 }
-                &Impl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
+                Impl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
                     let new_items = expand_impl(cx, &*items, options);
                     cx.item(item.span,
                             item.ident,
@@ -111,12 +110,12 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
     fn meta_list_to_set(cx: &mut ExtCtxt, list: &[&MetaItem]) -> HashSet<String> {
         let mut v = HashSet::new();
         for item in list {
-            match &item.node {
-                &Word(ref item_name) => {
+            match item.node {
+                Word(ref item_name) => {
                     v.insert(item_name.to_string());
                 }
-                &List(ref item_name, _) |
-                &NameValue(ref item_name, _) => {
+                List(ref item_name, _) |
+                NameValue(ref item_name, _) => {
                     cx.span_warn(item.span, &format!("Invalid option {}", item_name))
                 }
             }
@@ -218,7 +217,7 @@ fn expand_impl_method(cx: &mut ExtCtxt,
         }
     }
 
-    if let &ImplItemKind::Method(ref sig, ref block) = &item.node {
+    if let ImplItemKind::Method(ref sig, ref block) = item.node {
         let idents = arg_idents(cx, &sig.decl);
         let new_block = new_block(cx, options, name, block.clone(), idents, direct);
         ImplItemKind::Method(sig.clone(), new_block)
@@ -232,13 +231,13 @@ fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> 
     let mut depth_correct = false;
     let mut depth_span = None;
     for i in m.items.iter() {
-        match &i.node {
-            &Fn(..) => {
+        match i.node {
+            Fn(..) => {
                 let new_item = expand_function(cx, options.clone(), i, false);
                 new_items.push(cx.item(i.span, i.ident, i.attrs.clone(), new_item));
             }
-            &Static(_, ref mut_, ref expr) => {
-                let ref name = i.ident.name.as_str();
+            Static(_, ref mut_, ref expr) => {
+                let name = &i.ident.name.as_str();
                 if *name == "depth" {
                     depth_span = Some(i.span);
                     if let &Mutable = mut_ {
@@ -253,7 +252,7 @@ fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> 
                 }
                 new_items.push((*i).clone());
             }
-            &Impl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
+            Impl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
                 let new_impl_items = expand_impl(cx, &**items, options.clone());
                 new_items.push(cx.item(i.span,
                                        i.ident,
@@ -292,7 +291,7 @@ fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> 
 }
 
 fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: bool) -> ItemKind {
-    let ref name = &*item.ident.name.as_str();
+    let name = &&*item.ident.name.as_str();
 
     // If the attribute is not directly on this method, we filter by function names
     if !direct {
@@ -308,7 +307,7 @@ fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: b
         }
     }
 
-    if let &Fn(ref decl, style, constness, abi, ref generics, ref block) = &item.node {
+    if let Fn(ref decl, style, constness, abi, ref generics, ref block) = item.node {
         let idents = arg_idents(cx, &**decl);
         let new_block = new_block(cx, options, name, block.clone(), idents, direct);
         Fn(decl.clone(),
@@ -324,29 +323,29 @@ fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: b
 
 fn arg_idents(cx: &mut ExtCtxt, decl: &FnDecl) -> Vec<Ident> {
     fn extract_idents(cx: &mut ExtCtxt, pat: &ast::PatKind, idents: &mut Vec<Ident>) {
-        match pat {
-            &PatKind::Wild |
-            &PatKind::TupleStruct(_, _, None) |
-            &PatKind::Lit(_) |
-            &PatKind::Range(..) |
-            &PatKind::Path(..) => (),
-            &PatKind::Ident(_, sp, _) => {
+        match *pat {
+            PatKind::Wild |
+            PatKind::TupleStruct(_, _, None) |
+            PatKind::Lit(_) |
+            PatKind::Range(..) |
+            PatKind::Path(..) => (),
+            PatKind::Ident(_, sp, _) => {
                 if &*sp.node.name.as_str() != "self" {
                     idents.push(sp.node);
                 }
             }
-            &PatKind::TupleStruct(_, ref v, _) |
-            &PatKind::Tuple(ref v, _) => {
+            PatKind::TupleStruct(_, ref v, _) |
+            PatKind::Tuple(ref v, _) => {
                 for p in v {
                     extract_idents(cx, &p.node, idents);
                 }
             }
-            &PatKind::Struct(_, ref v, _) => {
+            PatKind::Struct(_, ref v, _) => {
                 for p in v {
                     extract_idents(cx, &p.node.pat.node, idents);
                 }
             }
-            &PatKind::Vec(ref v1, ref opt, ref v2) => {
+            PatKind::Vec(ref v1, ref opt, ref v2) => {
                 for p in v1 {
                     extract_idents(cx, &p.node, idents);
                 }
@@ -357,9 +356,9 @@ fn arg_idents(cx: &mut ExtCtxt, decl: &FnDecl) -> Vec<Ident> {
                     extract_idents(cx, &p.node, idents);
                 }
             }
-            &PatKind::Box(ref p) |
-            &PatKind::Ref(ref p, _) => extract_idents(cx, &p.node, idents),
-            &PatKind::Mac(ref m) => {
+            PatKind::Box(ref p) |
+            PatKind::Ref(ref p, _) => extract_idents(cx, &p.node, idents),
+            PatKind::Mac(ref m) => {
                 let sp = m.node.path.span;
                 cx.span_warn(sp, "trace ignores pattern macros in function arguments");
             }
