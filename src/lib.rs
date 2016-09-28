@@ -10,7 +10,7 @@ use rustc_plugin::Registry;
 
 use syntax::ptr::P;
 use syntax::ast::{self, Item, ItemKind, MetaItem, Block, Ident, FnDecl, ImplItem, ImplItemKind,
-                  PatKind};
+                  PatKind, NestedMetaItemKind};
 use syntax::ast::ExprKind::Lit;
 use syntax::ast::ItemKind::{Fn, Mod, Impl, Static};
 use syntax::ast::Mutability::Mutable;
@@ -108,7 +108,7 @@ impl Options {
 }
 
 fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
-    fn meta_list_to_set(cx: &mut ExtCtxt, list: &[P<MetaItem>]) -> HashSet<String> {
+    fn meta_list_to_set(cx: &mut ExtCtxt, list: &[&MetaItem]) -> HashSet<String> {
         let mut v = HashSet::new();
         for item in list {
             match &item.node {
@@ -127,34 +127,45 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
     let mut options = Options::new();
     if let List(_, ref v) = meta.node {
         for i in v {
-            match &i.node {
-                &NameValue(ref name, ref s) => {
-                    if *name == "prefix_enter" {
-                        if let Str(ref new_prefix, _) = s.node {
-                            options.prefix_enter = new_prefix.to_string();
+            if let NestedMetaItemKind::MetaItem(ref mi) = i.node {
+                match mi.node {
+                    NameValue(ref name, ref s) => {
+                        if *name == "prefix_enter" {
+                            if let Str(ref new_prefix, _) = s.node {
+                                options.prefix_enter = new_prefix.to_string();
+                            }
+                        } else if *name == "prefix_exit" {
+                            if let Str(ref new_prefix, _) = s.node {
+                                options.prefix_exit = new_prefix.to_string();
+                            }
+                        } else {
+                            cx.span_warn(i.span, &format!("Invalid option {}", name));
                         }
-                    } else if *name == "prefix_exit" {
-                        if let Str(ref new_prefix, _) = s.node {
-                            options.prefix_exit = new_prefix.to_string();
+                    }
+                    List(ref name, ref list) => {
+                        let list: Vec<_> = list.iter()
+                            .filter_map(|x| {
+                                if let NestedMetaItemKind::MetaItem(ref mi) = x.node {
+                                    Some(&(**mi))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        if *name == "enable" {
+                            options.enable = Some(meta_list_to_set(cx, &list[..]));
+                        } else if *name == "disable" {
+                            options.disable = Some(meta_list_to_set(cx, &list[..]));
+                        } else {
+                            cx.span_warn(i.span, &format!("Invalid option {}", name));
                         }
-                    } else {
-                        cx.span_warn(i.span, &format!("Invalid option {}", name));
                     }
-                }
-                &List(ref name, ref list) => {
-                    if *name == "enable" {
-                        options.enable = Some(meta_list_to_set(cx, list));
-                    } else if *name == "disable" {
-                        options.disable = Some(meta_list_to_set(cx, list));
-                    } else {
-                        cx.span_warn(i.span, &format!("Invalid option {}", name));
-                    }
-                }
-                &Word(ref name) => {
-                    if *name == "pause" {
-                        options.pause = true;
-                    } else {
-                        cx.span_warn(i.span, &format!("Invalid option {}", name))
+                    Word(ref name) => {
+                        if *name == "pause" {
+                            options.pause = true;
+                        } else {
+                            cx.span_warn(i.span, &format!("Invalid option {}", name))
+                        }
                     }
                 }
             }
