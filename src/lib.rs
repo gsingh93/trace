@@ -20,12 +20,13 @@ use syntax::codemap::{self, Span};
 use syntax::ext::base::{ExtCtxt, Annotatable};
 use syntax::ext::base::SyntaxExtension::MultiModifier;
 use syntax::ext::build::AstBuilder;
-use syntax::parse::token::{self, intern};
+use syntax::parse::token;
 use syntax::tokenstream::TokenTree;
+use syntax::symbol::Symbol;
 
 #[plugin_registrar]
 pub fn registrar(reg: &mut Registry) {
-    reg.register_syntax_extension(intern("trace"), MultiModifier(Box::new(trace_expand)));
+    reg.register_syntax_extension(Symbol::intern("trace"), MultiModifier(Box::new(trace_expand)));
 }
 
 fn trace_expand(cx: &mut ExtCtxt,
@@ -111,12 +112,12 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
         let mut v = HashSet::new();
         for item in list {
             match item.node {
-                Word(ref item_name) => {
-                    v.insert(item_name.to_string());
+                Word => {
+                    v.insert(item.name.to_string());
                 }
-                List(ref item_name, _) |
-                NameValue(ref item_name, _) => {
-                    cx.span_warn(item.span, &format!("Invalid option {}", item_name))
+                List(_) |
+                NameValue(_) => {
+                    cx.span_warn(item.span, &format!("Invalid option {}", item.name))
                 }
             }
         }
@@ -124,46 +125,46 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
     }
 
     let mut options = Options::new();
-    if let List(_, ref v) = meta.node {
+    if let List(ref v) = meta.node {
         for i in v {
             if let NestedMetaItemKind::MetaItem(ref mi) = i.node {
                 match mi.node {
-                    NameValue(ref name, ref s) => {
-                        if *name == "prefix_enter" {
+                    NameValue(ref s) => {
+                        if mi.name == "prefix_enter" {
                             if let Str(ref new_prefix, _) = s.node {
                                 options.prefix_enter = new_prefix.to_string();
                             }
-                        } else if *name == "prefix_exit" {
+                        } else if mi.name == "prefix_exit" {
                             if let Str(ref new_prefix, _) = s.node {
                                 options.prefix_exit = new_prefix.to_string();
                             }
                         } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", name));
+                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name));
                         }
                     }
-                    List(ref name, ref list) => {
+                    List(ref list) => {
                         let list: Vec<_> = list.iter()
                             .filter_map(|x| {
                                 if let NestedMetaItemKind::MetaItem(ref mi) = x.node {
-                                    Some(&(**mi))
+                                    Some(&(*mi))
                                 } else {
                                     None
                                 }
                             })
                             .collect();
-                        if *name == "enable" {
+                        if mi.name == "enable" {
                             options.enable = Some(meta_list_to_set(cx, &list[..]));
-                        } else if *name == "disable" {
+                        } else if mi.name == "disable" {
                             options.disable = Some(meta_list_to_set(cx, &list[..]));
                         } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", name));
+                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name));
                         }
                     }
-                    Word(ref name) => {
-                        if *name == "pause" {
+                    Word => {
+                        if mi.name == "pause" {
                             options.pause = true;
                         } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", name))
+                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name))
                         }
                     }
                 }
@@ -238,7 +239,7 @@ fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> 
             }
             Static(_, ref mut_, ref expr) => {
                 let name = &i.ident.name.as_str();
-                if *name == "depth" {
+                if *name == Symbol::intern("depth").as_str() {
                     depth_span = Some(i.span);
                     if let &Mutable = mut_ {
                         if let Lit(ref lit) = expr.node {
@@ -276,8 +277,8 @@ fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> 
                          mutability, the type, or the inital value are incorrect");
         }
     } else {
-        let depth_ident = Ident::with_empty_ctxt(intern("depth"));
-        let u32_ident = Ident::with_empty_ctxt(intern("u32"));
+        let depth_ident = Ident::with_empty_ctxt(Symbol::intern("depth"));
+        let u32_ident = Ident::with_empty_ctxt(Symbol::intern("u32"));
         let ty = cx.ty_path(cx.path(codemap::DUMMY_SP, vec![u32_ident]));
         let item_ = cx.item_static(codemap::DUMMY_SP,
                                    depth_ident,
@@ -345,7 +346,7 @@ fn arg_idents(cx: &mut ExtCtxt, decl: &FnDecl) -> Vec<Ident> {
                     extract_idents(cx, &p.node.pat.node, idents);
                 }
             }
-            PatKind::Vec(ref v1, ref opt, ref v2) => {
+            PatKind::Slice(ref v1, ref opt, ref v2) => {
                 for p in v1 {
                     extract_idents(cx, &p.node, idents);
                 }
