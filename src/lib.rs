@@ -41,6 +41,7 @@ fn trace_expand(cx: &mut ExtCtxt,
                 Fn(..) => {
                     let new_item = expand_function(cx, options, &item, true);
                     cx.item(item.span, item.ident, item.attrs.clone(), new_item)
+                        .map(|mut it| { it.vis = item.vis.clone(); it })
                 }
                 Mod(ref m) => {
                     let new_items = expand_mod(cx, m, options);
