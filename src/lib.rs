@@ -53,13 +53,14 @@ fn trace_expand(cx: &mut ExtCtxt,
                                 items: new_items,
                             }))
                 }
-                Impl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
+                Impl(safety, polarity, defaultness, ref generics, ref traitref, ref ty, ref items) => {
                     let new_items = expand_impl(cx, &*items, options);
                     cx.item(item.span,
                             item.ident,
                             item.attrs.clone(),
                             Impl(safety,
                                  polarity,
+                                 defaultness,
                                  generics.clone(),
                                  traitref.clone(),
                                  ty.clone(),
@@ -254,13 +255,14 @@ fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> 
                 }
                 new_items.push((*i).clone());
             }
-            Impl(safety, polarity, ref generics, ref traitref, ref ty, ref items) => {
+            Impl(safety, polarity, defaultness, ref generics, ref traitref, ref ty, ref items) => {
                 let new_impl_items = expand_impl(cx, &**items, options.clone());
                 new_items.push(cx.item(i.span,
                                        i.ident,
                                        i.attrs.clone(),
                                        Impl(safety,
                                             polarity,
+                                            defaultness,
                                             generics.clone(),
                                             traitref.clone(),
                                             ty.clone(),
