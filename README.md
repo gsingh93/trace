@@ -13,7 +13,7 @@ Add `trace = "*"` to your `Cargo.toml`.
 
 Here is an example you can find in the examples folder. If you've cloned the project, you can run this with `cargo run --example example`.
 
-```
+```rust
 #![feature(custom_attribute, plugin)]
 #![plugin(trace)]
 
