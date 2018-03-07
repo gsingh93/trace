@@ -328,6 +328,7 @@ fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: b
 fn arg_idents(cx: &mut ExtCtxt, decl: &FnDecl) -> Vec<Ident> {
     fn extract_idents(cx: &mut ExtCtxt, pat: &ast::PatKind, idents: &mut Vec<Ident>) {
         match *pat {
+            PatKind::Paren(..) |
             PatKind::Wild |
             PatKind::TupleStruct(_, _, None) |
             PatKind::Lit(_) |
