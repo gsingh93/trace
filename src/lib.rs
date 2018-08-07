@@ -85,6 +85,18 @@ fn trace_expand(cx: &mut ExtCtxt,
             cx.span_err(sp, "trace is not applicable to trait items");
             annotatable.clone()
         }
+        Annotatable::ForeignItem(_) => {
+            cx.span_err(sp, "trace is not applicable to foreign items");
+            annotatable.clone()
+        }
+        Annotatable::Stmt(_) => {
+            cx.span_err(sp, "trace is not applicable to statements");
+            annotatable.clone()
+        }
+        Annotatable::Expr(_) => {
+            cx.span_err(sp, "trace is not applicable to expressions");
+            annotatable.clone()
+        }
     }
 }
 
@@ -115,11 +127,11 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
         for item in list {
             match item.node {
                 Word => {
-                    v.insert(item.name.to_string());
+                    v.insert(item.name().to_string());
                 }
                 List(_) |
                 NameValue(_) => {
-                    cx.span_warn(item.span, &format!("Invalid option {}", item.name))
+                    cx.span_warn(item.span, &format!("Invalid option {}", item.name()))
                 }
             }
         }
@@ -132,16 +144,16 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
             if let NestedMetaItemKind::MetaItem(ref mi) = i.node {
                 match mi.node {
                     NameValue(ref s) => {
-                        if mi.name == "prefix_enter" {
+                        if mi.name() == "prefix_enter" {
                             if let Str(ref new_prefix, _) = s.node {
                                 options.prefix_enter = new_prefix.to_string();
                             }
-                        } else if mi.name == "prefix_exit" {
+                        } else if mi.name() == "prefix_exit" {
                             if let Str(ref new_prefix, _) = s.node {
                                 options.prefix_exit = new_prefix.to_string();
                             }
                         } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name));
+                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name()));
                         }
                     }
                     List(ref list) => {
@@ -154,19 +166,19 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
                                 }
                             })
                             .collect();
-                        if mi.name == "enable" {
+                        if mi.name() == "enable" {
                             options.enable = Some(meta_list_to_set(cx, &list[..]));
-                        } else if mi.name == "disable" {
+                        } else if mi.name() == "disable" {
                             options.disable = Some(meta_list_to_set(cx, &list[..]));
                         } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name));
+                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name()));
                         }
                     }
                     Word => {
-                        if mi.name == "pause" {
+                        if mi.name() == "pause" {
                             options.pause = true;
                         } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name))
+                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name()))
                         }
                     }
                 }
@@ -311,13 +323,11 @@ fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: b
         }
     }
 
-    if let Fn(ref decl, style, constness, abi, ref generics, ref block) = item.node {
+    if let Fn(ref decl, header, ref generics, ref block) = item.node {
         let idents = arg_idents(cx, &**decl);
         let new_block = new_block(cx, options, name, block.clone(), idents, direct);
         Fn(decl.clone(),
-           style,
-           constness,
-           abi,
+           header,
            generics.clone(),
            new_block)
     } else {
@@ -335,8 +345,8 @@ fn arg_idents(cx: &mut ExtCtxt, decl: &FnDecl) -> Vec<Ident> {
             PatKind::Range(..) |
             PatKind::Path(..) => (),
             PatKind::Ident(_, sp, _) => {
-                if &*sp.node.name.as_str() != "self" {
-                    idents.push(sp.node);
+                if &*sp.name.as_str() != "self" {
+                    idents.push(sp);
                 }
             }
             PatKind::TupleStruct(_, ref v, _) |
@@ -400,7 +410,7 @@ fn new_block(cx: &mut ExtCtxt,
     };
 
     let args: Vec<TokenTree> = idents.iter()
-        .map(|ident| vec![token::Ident((*ident).clone())])
+        .map(|ident| vec![token::Ident((*ident).clone(), ident.is_raw_guess())])
         .collect::<Vec<_>>()
         .join(&token::Comma)
         .into_iter()
