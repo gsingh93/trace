@@ -16,7 +16,7 @@ use syntax::ast::ItemKind::{Fn, Mod, Impl, Static};
 use syntax::ast::Mutability::Mutable;
 use syntax::ast::MetaItemKind::{List, NameValue, Word};
 use syntax::ast::LitKind::{Str, Int};
-use syntax::codemap::{self, Span};
+use syntax::source_map::{self, Span};
 use syntax::ext::base::{ExtCtxt, Annotatable};
 use syntax::ext::base::SyntaxExtension::MultiModifier;
 use syntax::ext::build::AstBuilder;
@@ -294,12 +294,12 @@ fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> 
     } else {
         let depth_ident = Ident::with_empty_ctxt(Symbol::intern("depth"));
         let u32_ident = Ident::with_empty_ctxt(Symbol::intern("u32"));
-        let ty = cx.ty_path(cx.path(codemap::DUMMY_SP, vec![u32_ident]));
-        let item_ = cx.item_static(codemap::DUMMY_SP,
+        let ty = cx.ty_path(cx.path(source_map::DUMMY_SP, vec![u32_ident]));
+        let item_ = cx.item_static(source_map::DUMMY_SP,
                                    depth_ident,
                                    ty,
                                    Mutable,
-                                   cx.expr_u32(codemap::DUMMY_SP, 0));
+                                   cx.expr_u32(source_map::DUMMY_SP, 0));
         new_items.push(item_);
     }
 
@@ -414,7 +414,7 @@ fn new_block(cx: &mut ExtCtxt,
         .collect::<Vec<_>>()
         .join(&token::Comma)
         .into_iter()
-        .map(|t| TokenTree::Token(codemap::DUMMY_SP, t))
+        .map(|t| TokenTree::Token(source_map::DUMMY_SP, t))
         .collect();
 
     let mut arg_fmt = vec![];
