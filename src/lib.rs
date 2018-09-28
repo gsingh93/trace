@@ -50,6 +50,7 @@ fn trace_expand(cx: &mut ExtCtxt,
                             item.attrs.clone(),
                             Mod(ast::Mod {
                                 inner: m.inner,
+                                inline: m.inline,
                                 items: new_items,
                             }))
                 }
