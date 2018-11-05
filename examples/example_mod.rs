@@ -1,19 +1,32 @@
-#![feature(custom_attribute, plugin)]
-#![plugin(trace)]
-#![trace]
+// error[E0658]: non-builtin inner attributes are unstable (see issue #54726)
+// error[E0658]: The attribute `trace` is currently unknown to the compiler and may have meaning added to it in the future (see issue #29642)
+//#![trace]
+
+#![feature(proc_macro_hygiene)]  // to use custom attributes on `mod`
+
+extern crate trace;
+
+use trace::trace;
+
+// error: an inner attribute is not permitted in this context
+// error[E0658]: non-builtin inner attributes are unstable (see issue #54726)
+//#![trace]
 
 fn main() {
-    foo();
-    let foo = Foo;
+    foo::foo();
+    let foo = foo::Foo;
     foo.bar();
 }
 
-fn foo() {
-    println!("I'm in foo!");
-}
+#[trace]
+mod foo{
+    pub(super) fn foo() {
+        println!("I'm in foo!");
+    }
 
-struct Foo;
-impl Foo {
-    fn bar(&self) {
+    pub(super) struct Foo;
+    impl Foo {
+        pub(super) fn bar(&self) {
+        }
     }
 }

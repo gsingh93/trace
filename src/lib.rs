@@ -1,444 +1,294 @@
-#![feature(quote, plugin_registrar, rustc_private, slice_concat_ext)]
+extern crate proc_macro;
+extern crate proc_macro2;
+extern crate quote;
+extern crate syn;
 
-extern crate syntax;
-extern crate rustc_plugin;
+mod args;
 
-use std::slice::SliceConcatExt;
-use std::collections::HashSet;
+use quote::{ToTokens, quote};
+use syn::{
+    parse_quote,
+    parse::{Parse, Parser},
+    spanned::Spanned,
+};
 
-use rustc_plugin::Registry;
 
-use syntax::ptr::P;
-use syntax::ast::{self, Item, ItemKind, MetaItem, Block, Ident, FnDecl, ImplItem, ImplItemKind,
-                  PatKind, NestedMetaItemKind};
-use syntax::ast::ExprKind::Lit;
-use syntax::ast::ItemKind::{Fn, Mod, Impl, Static};
-use syntax::ast::Mutability::Mutable;
-use syntax::ast::MetaItemKind::{List, NameValue, Word};
-use syntax::ast::LitKind::{Str, Int};
-use syntax::codemap::{self, Span};
-use syntax::ext::base::{ExtCtxt, Annotatable};
-use syntax::ext::base::SyntaxExtension::MultiModifier;
-use syntax::ext::build::AstBuilder;
-use syntax::parse::token;
-use syntax::tokenstream::TokenTree;
-use syntax::symbol::Symbol;
-
-#[plugin_registrar]
-pub fn registrar(reg: &mut Registry) {
-    reg.register_syntax_extension(Symbol::intern("trace"), MultiModifier(Box::new(trace_expand)));
-}
-
-fn trace_expand(cx: &mut ExtCtxt,
-                sp: Span,
-                meta: &MetaItem,
-                annotatable: Annotatable)
-                -> Annotatable {
-    let options = get_options(cx, meta);
-    match annotatable {
-        Annotatable::Item(item) => {
-            let res = match item.node {
-                Fn(..) => {
-                    let new_item = expand_function(cx, options, &item, true);
-                    cx.item(item.span, item.ident, item.attrs.clone(), new_item)
-                        .map(|mut it| { it.vis = item.vis.clone(); it })
-                }
-                Mod(ref m) => {
-                    let new_items = expand_mod(cx, m, options);
-                    cx.item(item.span,
-                            item.ident,
-                            item.attrs.clone(),
-                            Mod(ast::Mod {
-                                inner: m.inner,
-                                items: new_items,
-                            }))
-                }
-                Impl(safety, polarity, defaultness, ref generics, ref traitref, ref ty, ref items) => {
-                    let new_items = expand_impl(cx, &*items, options);
-                    cx.item(item.span,
-                            item.ident,
-                            item.attrs.clone(),
-                            Impl(safety,
-                                 polarity,
-                                 defaultness,
-                                 generics.clone(),
-                                 traitref.clone(),
-                                 ty.clone(),
-                                 new_items))
-                }
-                _ => {
-                    cx.span_err(sp, "trace is only permissible on functions, mods, or impls");
-                    item.clone()
-                }
-            };
-            Annotatable::Item(res)
-        }
-        Annotatable::ImplItem(item) => {
-            let new_item = expand_impl_method(cx, options, &item, true);
-            Annotatable::ImplItem(P(ImplItem {
-                node: new_item,
-                attrs: vec![],
-                ..(*item).clone()
-            }))
-        }
-        Annotatable::TraitItem(_) => {
-            cx.span_err(sp, "trace is not applicable to trait items");
-            annotatable.clone()
-        }
-    }
-}
-
-#[derive(Clone)]
-struct Options {
-    prefix_enter: String,
-    prefix_exit: String,
-    enable: Option<HashSet<String>>,
-    disable: Option<HashSet<String>>,
-    pause: bool,
-}
-
-impl Options {
-    fn new() -> Options {
-        Options {
-            prefix_enter: "[+]".to_string(),
-            prefix_exit: "[-]".to_string(),
-            enable: None,
-            disable: None,
-            pause: false,
-        }
-    }
-}
-
-fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
-    fn meta_list_to_set(cx: &mut ExtCtxt, list: &[&MetaItem]) -> HashSet<String> {
-        let mut v = HashSet::new();
-        for item in list {
-            match item.node {
-                Word => {
-                    v.insert(item.name.to_string());
-                }
-                List(_) |
-                NameValue(_) => {
-                    cx.span_warn(item.span, &format!("Invalid option {}", item.name))
-                }
-            }
-        }
-        v
-    }
-
-    let mut options = Options::new();
-    if let List(ref v) = meta.node {
-        for i in v {
-            if let NestedMetaItemKind::MetaItem(ref mi) = i.node {
-                match mi.node {
-                    NameValue(ref s) => {
-                        if mi.name == "prefix_enter" {
-                            if let Str(ref new_prefix, _) = s.node {
-                                options.prefix_enter = new_prefix.to_string();
-                            }
-                        } else if mi.name == "prefix_exit" {
-                            if let Str(ref new_prefix, _) = s.node {
-                                options.prefix_exit = new_prefix.to_string();
-                            }
-                        } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name));
-                        }
-                    }
-                    List(ref list) => {
-                        let list: Vec<_> = list.iter()
-                            .filter_map(|x| {
-                                if let NestedMetaItemKind::MetaItem(ref mi) = x.node {
-                                    Some(&(*mi))
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        if mi.name == "enable" {
-                            options.enable = Some(meta_list_to_set(cx, &list[..]));
-                        } else if mi.name == "disable" {
-                            options.disable = Some(meta_list_to_set(cx, &list[..]));
-                        } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name));
-                        }
-                    }
-                    Word => {
-                        if mi.name == "pause" {
-                            options.pause = true;
-                        } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name))
-                        }
-                    }
-                }
-            }
-        }
-    }
-    if options.enable.is_some() && options.disable.is_some() {
-        cx.span_err(meta.span,
-                    "Cannot use both enable and disable options with trace");
-    }
-    options
-}
-
-fn expand_impl(cx: &mut ExtCtxt, items: &[ImplItem], options: Options) -> Vec<ImplItem> {
-    let mut new_items = vec![];
-    for item in items.iter() {
-        if let ImplItemKind::Method(..) = item.node {
-            let new_item = expand_impl_method(cx, options.clone(), item, false);
-            new_items.push(ImplItem {
-                node: new_item,
-                attrs: vec![],
-                ..(*item).clone()
-            });
-        }
-    }
-    new_items
-}
-
-fn expand_impl_method(cx: &mut ExtCtxt,
-                      options: Options,
-                      item: &ImplItem,
-                      direct: bool)
-                      -> ImplItemKind {
-    let name = &*item.ident.name.as_str();
-
-    // If the attribute is not directly on this method, we filter by function names
-    if !direct {
-        match (&options.enable, &options.disable) {
-            (&Some(ref s), &None) => {
-                if !s.contains(name) {
-                    return item.node.clone();
-                }
-            }
-            (&None, &Some(ref s)) => {
-                if s.contains(name) {
-                    return item.node.clone();
-                }
-            }
-            (&Some(_), &Some(_)) => unreachable!(),
-            _ => (),
-        }
-    }
-
-    if let ImplItemKind::Method(ref sig, ref block) = item.node {
-        let idents = arg_idents(cx, &sig.decl);
-        let new_block = new_block(cx, options, name, block.clone(), idents, direct);
-        ImplItemKind::Method(sig.clone(), new_block)
-    } else {
-        panic!("Expected method");
-    }
-}
-
-fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> {
-    let mut new_items = vec![];
-    let mut depth_correct = false;
-    let mut depth_span = None;
-    for i in m.items.iter() {
-        match i.node {
-            Fn(..) => {
-                let new_item = expand_function(cx, options.clone(), i, false);
-                new_items.push(cx.item(i.span, i.ident, i.attrs.clone(), new_item));
-            }
-            Static(_, ref mut_, ref expr) => {
-                let name = &i.ident.name.as_str();
-                if *name == Symbol::intern("depth").as_str() {
-                    depth_span = Some(i.span);
-                    if let &Mutable = mut_ {
-                        if let Lit(ref lit) = expr.node {
-                            if let Int(ref val, _) = lit.node {
-                                if *val == 0 {
-                                    depth_correct = true;
-                                }
-                            }
-                        }
-                    }
-                }
-                new_items.push((*i).clone());
-            }
-            Impl(safety, polarity, defaultness, ref generics, ref traitref, ref ty, ref items) => {
-                let new_impl_items = expand_impl(cx, &**items, options.clone());
-                new_items.push(cx.item(i.span,
-                                       i.ident,
-                                       i.attrs.clone(),
-                                       Impl(safety,
-                                            polarity,
-                                            defaultness,
-                                            generics.clone(),
-                                            traitref.clone(),
-                                            ty.clone(),
-                                            new_impl_items)));
-            }
-            _ => {
-                new_items.push((*i).clone());
-            }
-        }
-    }
-    if let Some(sp) = depth_span {
-        if !depth_correct {
-            cx.span_err(sp,
-                        "A static variable with the name `depth` was found, but either the \
-                         mutability, the type, or the inital value are incorrect");
-        }
-    } else {
-        let depth_ident = Ident::with_empty_ctxt(Symbol::intern("depth"));
-        let u32_ident = Ident::with_empty_ctxt(Symbol::intern("u32"));
-        let ty = cx.ty_path(cx.path(codemap::DUMMY_SP, vec![u32_ident]));
-        let item_ = cx.item_static(codemap::DUMMY_SP,
-                                   depth_ident,
-                                   ty,
-                                   Mutable,
-                                   cx.expr_u32(codemap::DUMMY_SP, 0));
-        new_items.push(item_);
-    }
-
-    new_items
-}
-
-fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: bool) -> ItemKind {
-    let name = &&*item.ident.name.as_str();
-
-    // If the attribute is not directly on this method, we filter by function names
-    if !direct {
-        match (&options.enable, &options.disable) {
-            (&Some(ref s), &None) |
-            (&None, &Some(ref s)) => {
-                if !s.contains(*name) {
-                    return item.node.clone();
-                }
-            }
-            (&Some(_), &Some(_)) => unreachable!(),
-            _ => (),
-        }
-    }
-
-    if let Fn(ref decl, style, constness, abi, ref generics, ref block) = item.node {
-        let idents = arg_idents(cx, &**decl);
-        let new_block = new_block(cx, options, name, block.clone(), idents, direct);
-        Fn(decl.clone(),
-           style,
-           constness,
-           abi,
-           generics.clone(),
-           new_block)
-    } else {
-        panic!("Expected a function")
-    }
-}
-
-fn arg_idents(cx: &mut ExtCtxt, decl: &FnDecl) -> Vec<Ident> {
-    fn extract_idents(cx: &mut ExtCtxt, pat: &ast::PatKind, idents: &mut Vec<Ident>) {
-        match *pat {
-            PatKind::Paren(..) |
-            PatKind::Wild |
-            PatKind::TupleStruct(_, _, None) |
-            PatKind::Lit(_) |
-            PatKind::Range(..) |
-            PatKind::Path(..) => (),
-            PatKind::Ident(_, sp, _) => {
-                if &*sp.node.name.as_str() != "self" {
-                    idents.push(sp.node);
-                }
-            }
-            PatKind::TupleStruct(_, ref v, _) |
-            PatKind::Tuple(ref v, _) => {
-                for p in v {
-                    extract_idents(cx, &p.node, idents);
-                }
-            }
-            PatKind::Struct(_, ref v, _) => {
-                for p in v {
-                    extract_idents(cx, &p.node.pat.node, idents);
-                }
-            }
-            PatKind::Slice(ref v1, ref opt, ref v2) => {
-                for p in v1 {
-                    extract_idents(cx, &p.node, idents);
-                }
-                if let &Some(ref p) = opt {
-                    extract_idents(cx, &p.node, idents);
-                }
-                for p in v2 {
-                    extract_idents(cx, &p.node, idents);
-                }
-            }
-            PatKind::Box(ref p) |
-            PatKind::Ref(ref p, _) => extract_idents(cx, &p.node, idents),
-            PatKind::Mac(ref m) => {
-                let sp = m.node.path.span;
-                cx.span_warn(sp, "trace ignores pattern macros in function arguments");
-            }
-        }
-    }
-    let mut idents = vec![];
-    for arg in decl.inputs.iter() {
-        extract_idents(cx, &arg.pat.node, &mut idents);
-    }
-    idents
-}
-
-fn new_block(cx: &mut ExtCtxt,
-             options: Options,
-             name: &str,
-             block: P<Block>,
-             idents: Vec<Ident>,
-             direct: bool)
-             -> P<Block> {
-    // If the attribute is on this method, we filter the arguments
-    let idents = if direct {
-        match (&options.enable, &options.disable) {
-            (&Some(ref s), &None) => {
-                idents.into_iter().filter(|x| s.contains(&*x.name.as_str())).collect()
-            }
-            (&None, &Some(ref s)) => {
-                idents.into_iter().filter(|x| !s.contains(&*x.name.as_str())).collect()
-            }
-            (&Some(_), &Some(_)) => unreachable!(),
-            _ => idents,
-        }
-    } else {
-        idents
+#[proc_macro_attribute]
+pub fn trace(args: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let raw_args = syn::parse_macro_input!(args as syn::AttributeArgs);
+    let args = match args::Args::from_raw_args(raw_args) {
+        Ok(args) => args,
+        Err(errors) => return errors
+            .iter()
+            .map(syn::parse::Error::to_compile_error)
+            .collect::<proc_macro2::TokenStream>()
+            .into(),
     };
 
-    let args: Vec<TokenTree> = idents.iter()
-        .map(|ident| vec![token::Ident((*ident).clone())])
-        .collect::<Vec<_>>()
-        .join(&token::Comma)
-        .into_iter()
-        .map(|t| TokenTree::Token(codemap::DUMMY_SP, t))
-        .collect();
+    let output = if let Ok(item) = syn::Item::parse.parse(input.clone()) {
+        expand_item(&args, item)
+    } else if let Ok(impl_item) = syn::ImplItem::parse.parse(input.clone()) {
+        expand_impl_item(&args, impl_item)
+    } else {
+        let span = proc_macro2::TokenStream::from(input).span();
+        syn::parse::Error::new(span, "expected one of: `fn`, `impl`, `mod`").to_compile_error()
+    };
 
-    let mut arg_fmt = vec![];
-    for ident in idents.iter() {
-        arg_fmt.push(format!("{}: {{:?}}", ident))
+    output.into()
+}
+
+
+#[derive(Clone, Copy)]
+enum AttrApplied {
+    Directly,
+    Indirectly,
+}
+
+fn expand_item(
+    args: &args::Args,
+    mut item: syn::Item,
+) -> proc_macro2::TokenStream {
+    transform_item(args, AttrApplied::Directly, &mut item);
+
+    match item {
+        syn::Item::Fn(_)   |
+        syn::Item::Mod(_)  |
+        syn::Item::Impl(_) => item.into_token_stream(),
+        _ => {
+            syn::parse::Error::new(item.span(), "#[trace] is not supported for this item")
+                .to_compile_error()
+        },
     }
-    let arg_fmt_str = &*arg_fmt.join(", ");
+}
 
-    let prefix_enter = &*options.prefix_enter;
-    let prefix_exit = &*options.prefix_exit;
-    let pause = options.pause;
+fn expand_impl_item(
+    args: &args::Args,
+    mut impl_item: syn::ImplItem,
+) -> proc_macro2::TokenStream {
+    transform_impl_item(args, AttrApplied::Directly, &mut impl_item);
 
-    let new_block = quote_expr!(cx,
-    unsafe {
-        let mut s = String::new();
-        (0..depth).map(|_| s.push(' ')).count();
-        let args = format!($arg_fmt_str, $args);
-        println!("{}{} Entering {}({})", s, $prefix_enter, $name, args);
-        if $pause {
-            use std::io::{BufRead, stdin};
-            let stdin = stdin();
-            stdin.lock().lines().next();
+    match impl_item {
+        syn::ImplItem::Method(_) => impl_item.into_token_stream(),
+        _ => {
+            syn::parse::Error::new(impl_item.span(), "#[trace] is not supported for this impl item")
+                .to_compile_error()
+        },
+    }
+}
+
+
+fn transform_item(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    item: &mut syn::Item,
+) {
+    match *item {
+        syn::Item::Fn(ref mut item_fn) => transform_fn(args, attr_applied, item_fn),
+        syn::Item::Mod(ref mut item_mod) => transform_mod(args, attr_applied, item_mod),
+        syn::Item::Impl(ref mut item_impl) => transform_impl(args, attr_applied, item_impl),
+        _ => (),
+    }
+}
+
+fn transform_fn(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    item_fn: &mut syn::ItemFn,
+) {
+    item_fn.block = Box::new(construct_traced_block(
+        &args,
+        attr_applied,
+        &item_fn.ident,
+        &item_fn.decl,
+        &item_fn.block,
+    ));
+}
+
+fn transform_mod(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    item_mod: &mut syn::ItemMod,
+) {
+    assert!(
+        (item_mod.content.is_some() && item_mod.semi.is_none()) ||
+        (item_mod.content.is_none() && item_mod.semi.is_some())
+    );
+
+    if item_mod.semi.is_some() {
+        unimplemented!();
+    }
+
+    if let Some((_, items)) = item_mod.content.as_mut() {
+        items.iter_mut().for_each(|item| {
+            if let AttrApplied::Directly = attr_applied {
+                match *item {
+                    syn::Item::Fn(syn::ItemFn { ref ident, .. })   |
+                    syn::Item::Mod(syn::ItemMod { ref ident, .. }) => match args.filter {
+                        args::Filter::Enable(ref idents) if !idents.contains(ident) => { return; }
+                        args::Filter::Disable(ref idents) if idents.contains(ident) => { return; }
+                        _ => (),
+                    },
+                    _ => (),
+                }
+            }
+
+            transform_item(args, AttrApplied::Indirectly, item);
+        });
+
+        items.insert(0, parse_quote! {
+            #[allow(non_upper_case_globals)]
+            static mut depth: usize = 0;
+        });
+    }
+}
+
+fn transform_impl(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    item_impl: &mut syn::ItemImpl,
+) {
+    item_impl.items.iter_mut().for_each(|impl_item| {
+        if let syn::ImplItem::Method(ref mut impl_item_method) = *impl_item {
+            if let AttrApplied::Directly = attr_applied {
+                let ident = &impl_item_method.sig.ident;
+
+                match args.filter {
+                    args::Filter::Enable(ref idents) if !idents.contains(ident) => { return; }
+                    args::Filter::Disable(ref idents) if idents.contains(ident) => { return; }
+                    _ => (),
+                }
+            }
+
+            impl_item_method.block = construct_traced_block(
+                &args,
+                AttrApplied::Indirectly,
+                &impl_item_method.sig.ident,
+                &impl_item_method.sig.decl,
+                &impl_item_method.block,
+            );
         }
-        depth += 1;
-        let mut __trace_closure = move || $block;
-        let __trace_result = __trace_closure();
-        depth -= 1;
-        println!("{}{} Exiting {} = {:?}", s, $prefix_exit, $name, __trace_result);
-        if $pause {
-            use std::io::{BufRead, stdin};
-            let stdin = stdin();
-            stdin.lock().lines().next();
-        }
-        __trace_result
     });
-    cx.block_expr(new_block)
+}
+
+fn transform_impl_item(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    impl_item: &mut syn::ImplItem,
+) {
+    // Will probably add more cases in the future
+    #[cfg_attr(feature = "cargo-clippy", allow(single_match))]
+    match *impl_item {
+        syn::ImplItem::Method(ref mut impl_item_method) => {
+            transform_method(args, attr_applied, impl_item_method)
+        },
+        _ => (),
+    }
+}
+
+fn transform_method(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    impl_item_method: &mut syn::ImplItemMethod,
+) {
+    impl_item_method.block = construct_traced_block(
+        &args,
+        attr_applied,
+        &impl_item_method.sig.ident,
+        &impl_item_method.sig.decl,
+        &impl_item_method.block,
+    );
+}
+
+
+fn construct_traced_block(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    ident: &proc_macro2::Ident,
+    fn_decl: &syn::FnDecl,
+    original_block: &syn::Block,
+) -> syn::Block {
+    let arg_idents = extract_arg_idents(args, attr_applied, &fn_decl);
+    let arg_idents_format = arg_idents
+        .iter()
+        .map(|arg_ident| format!("{} = {{:?}}", arg_ident))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let entering_format =
+        format!("{{:depth$}}{} Entering {}({})", args.prefix_enter, ident, arg_idents_format);
+    let exiting_format =
+        format!("{{:depth$}}{} Exiting {} = {{:?}}", args.prefix_exit, ident);
+
+    let pause_stmt = if args.pause {
+        quote! {{
+            use std::io::{self, BufRead};
+            let stdin = io::stdin();
+            stdin.lock().lines().next();
+        }}
+    } else {
+        quote!()
+    };
+
+    parse_quote! {{
+        println!(#entering_format, "", #(#arg_idents,)* depth = unsafe { depth });
+        #pause_stmt
+        unsafe { depth += 1; }
+        let fn_closure = move || #original_block;
+        let fn_return_value = fn_closure();
+        unsafe { depth -= 1; }
+        println!(#exiting_format, "", fn_return_value, depth = unsafe { depth });
+        #pause_stmt
+        fn_return_value
+    }}
+}
+
+fn extract_arg_idents(
+    args: &args::Args,
+    attr_applied: AttrApplied,
+    fn_decl: &syn::FnDecl,
+) -> Vec<proc_macro2::Ident> {
+    fn process_pat(
+        args: &args::Args,
+        attr_applied: AttrApplied,
+        pat: &syn::Pat,
+        arg_idents: &mut Vec<proc_macro2::Ident>,
+    ) {
+        match *pat {
+            syn::Pat::Ident(ref pat_ident) => {
+                let ident = &pat_ident.ident;
+
+                if let AttrApplied::Directly = attr_applied {
+                    match args.filter {
+                        args::Filter::Enable(ref idents) if !idents.contains(ident) => { return; },
+                        args::Filter::Disable(ref idents) if idents.contains(ident) => { return; },
+                        _ => (),
+                    }
+                }
+
+                arg_idents.push(ident.clone());
+            },
+            syn::Pat::Tuple(ref pat_tuple) => {
+                pat_tuple.front.iter().for_each(|pat| {
+                    process_pat(args, attr_applied, pat, arg_idents);
+                });
+            },
+            _ => unimplemented!(),
+        }
+    }
+
+    let mut arg_idents = vec![];
+
+    for input in &fn_decl.inputs {
+        match *input {
+            syn::FnArg::SelfRef(_)   |
+            syn::FnArg::SelfValue(_) => (),  // ignore `self`
+            syn::FnArg::Captured(ref arg_captured) => {
+                process_pat(args, attr_applied, &arg_captured.pat, &mut arg_idents);
+            },
+            syn::FnArg::Inferred(_) |
+            syn::FnArg::Ignored(_)  => unimplemented!(),
+        }
+    }
+
+    arg_idents
 }

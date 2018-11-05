@@ -7,5 +7,9 @@ license = "MIT"
 description = "A syntax extension for tracing the execution of functions"
 
 [lib]
-name = "trace"
-plugin = true
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "0.4.20"
+quote = "0.6.8"
+syn = { version = "0.15.10", features = ["full"] }

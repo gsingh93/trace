@@ -1,3 +1,29 @@
 language: rust
+sudo: false
+
 rust:
-  - nightly
+  - 1.30.0  # Minimum supported Rust
+  - stable
+  - beta
+
+script:
+  - cargo build --verbose
+  # Some examples require nightly, so let's delegate that to nightly builds
+  - cargo test --verbose --lib
+
+matrix:
+  include:
+    - rust: nightly
+      script:
+        - cargo build --verbose
+        - cargo test --verbose
+
+        - RUSTFLAGS='--cfg procmacro2_semver_exempt' cargo build --verbose
+        - RUSTFLAGS='--cfg procmacro2_semver_exempt' cargo test --verbose
+
+        - cargo update -Z minimal-versions
+        - cargo build --verbose
+        - cargo test --verbose
+
+        - RUSTFLAGS='--cfg procmacro2_semver_exempt' cargo build --verbose
+        - RUSTFLAGS='--cfg procmacro2_semver_exempt' cargo test --verbose
