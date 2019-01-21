@@ -279,7 +279,7 @@ fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> 
             }
             Static(_, ref mut_, ref expr) => {
                 let name = &i.ident.name.as_str();
-                if *name == Symbol::intern("depth").as_str() {
+                if *name == Symbol::intern("DEPTH").as_str() {
                     depth_span = Some(i.span);
                     if let &Mutable = mut_ {
                         if let Lit(ref lit) = expr.node {
@@ -319,12 +319,12 @@ fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> 
         if !depth_correct {
             cx.span_err(
                 sp,
-                "A static variable with the name `depth` was found, but either the \
+                "A static variable with the name `DEPTH` was found, but either the \
                  mutability, the type, or the inital value are incorrect",
             );
         }
     } else {
-        let depth_ident = Ident::with_empty_ctxt(Symbol::intern("depth"));
+        let depth_ident = Ident::with_empty_ctxt(Symbol::intern("DEPTH"));
         let u32_ident = Ident::with_empty_ctxt(Symbol::intern("u32"));
         let ty = cx.ty_path(cx.path(source_map::DUMMY_SP, vec![u32_ident]));
         let item_ = cx.item_static(
@@ -460,27 +460,27 @@ fn new_block(
     let pause = options.pause;
 
     let new_block = quote_expr!(cx,
-    unsafe {
-        let mut s = String::new();
-        (0..depth).map(|_| s.push(' ')).count();
-        let args = format!($arg_fmt_str, $args);
-        println!("{}{} Entering {}({})", s, $prefix_enter, $name, args);
-        if $pause {
-            use std::io::{BufRead, stdin};
-            let stdin = stdin();
-            stdin.lock().lines().next();
-        }
-        depth += 1;
-        let mut __trace_closure = move || $block;
-        let __trace_result = __trace_closure();
-        depth -= 1;
-        println!("{}{} Exiting {} = {:?}", s, $prefix_exit, $name, __trace_result);
-        if $pause {
-            use std::io::{BufRead, stdin};
-            let stdin = stdin();
-            stdin.lock().lines().next();
-        }
-        __trace_result
+        unsafe {
+            let mut s = String::new();
+            (0..DEPTH).map(|_| s.push(' ')).count();
+            let args = format!($arg_fmt_str, $args);
+            println!("{}{} Entering {}({})", s, $prefix_enter, $name, args);
+            if $pause {
+                use std::io::{BufRead, stdin};
+                let stdin = stdin();
+                stdin.lock().lines().next();
+            }
+            DEPTH += 1;
+            let mut __trace_closure = move || $block;
+            let __trace_result = __trace_closure();
+            DEPTH -= 1;
+            println!("{}{} Exiting {} = {:?}", s, $prefix_exit, $name, __trace_result);
+            if $pause {
+                use std::io::{BufRead, stdin};
+                let stdin = stdin();
+                stdin.lock().lines().next();
+            }
+            __trace_result
     });
     cx.block_expr(new_block)
 }

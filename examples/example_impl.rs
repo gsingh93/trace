@@ -1,7 +1,7 @@
 #![feature(custom_attribute, plugin)]
 #![plugin(trace)]
 
-static mut depth: u32 = 0;
+static mut DEPTH: u32 = 0;
 
 fn main() {
     let foo = Foo;
