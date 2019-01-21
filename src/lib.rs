@@ -1,9 +1,8 @@
-#![feature(quote, plugin_registrar, rustc_private, slice_concat_ext)]
+#![feature(quote, plugin_registrar, rustc_private)]
 
 extern crate syntax;
 extern crate rustc_plugin;
 
-use std::slice::SliceConcatExt;
 use std::collections::HashSet;
 
 use rustc_plugin::Registry;
@@ -16,7 +15,7 @@ use syntax::ast::ItemKind::{Fn, Mod, Impl, Static};
 use syntax::ast::Mutability::Mutable;
 use syntax::ast::MetaItemKind::{List, NameValue, Word};
 use syntax::ast::LitKind::{Str, Int};
-use syntax::codemap::{self, Span};
+use syntax::source_map::{self, Span};
 use syntax::ext::base::{ExtCtxt, Annotatable};
 use syntax::ext::base::SyntaxExtension::MultiModifier;
 use syntax::ext::build::AstBuilder;
@@ -51,6 +50,7 @@ fn trace_expand(cx: &mut ExtCtxt,
                             Mod(ast::Mod {
                                 inner: m.inner,
                                 items: new_items,
+                                inline: m.inline,
                             }))
                 }
                 Impl(safety, polarity, defaultness, ref generics, ref traitref, ref ty, ref items) => {
@@ -85,6 +85,18 @@ fn trace_expand(cx: &mut ExtCtxt,
             cx.span_err(sp, "trace is not applicable to trait items");
             annotatable.clone()
         }
+        Annotatable::ForeignItem(_) => {
+            cx.span_err(sp, "trace is not applicable to foreign items");
+            annotatable.clone()
+        }
+        Annotatable::Stmt(_) => {
+            cx.span_err(sp, "trace is not applicable to statements");
+            annotatable.clone()
+        }
+        Annotatable::Expr(_) => {
+            cx.span_err(sp, "trace is not applicable to expressions");
+            annotatable.clone()
+        }
     }
 }
 
@@ -115,11 +127,11 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
         for item in list {
             match item.node {
                 Word => {
-                    v.insert(item.name.to_string());
+                    v.insert(item.name().to_string());
                 }
                 List(_) |
                 NameValue(_) => {
-                    cx.span_warn(item.span, &format!("Invalid option {}", item.name))
+                    cx.span_warn(item.span, &format!("Invalid option {}", item.name()))
                 }
             }
         }
@@ -132,16 +144,16 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
             if let NestedMetaItemKind::MetaItem(ref mi) = i.node {
                 match mi.node {
                     NameValue(ref s) => {
-                        if mi.name == "prefix_enter" {
+                        if mi.name() == "prefix_enter" {
                             if let Str(ref new_prefix, _) = s.node {
                                 options.prefix_enter = new_prefix.to_string();
                             }
-                        } else if mi.name == "prefix_exit" {
+                        } else if mi.name() == "prefix_exit" {
                             if let Str(ref new_prefix, _) = s.node {
                                 options.prefix_exit = new_prefix.to_string();
                             }
                         } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name));
+                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name()));
                         }
                     }
                     List(ref list) => {
@@ -154,19 +166,19 @@ fn get_options(cx: &mut ExtCtxt, meta: &MetaItem) -> Options {
                                 }
                             })
                             .collect();
-                        if mi.name == "enable" {
+                        if mi.name() == "enable" {
                             options.enable = Some(meta_list_to_set(cx, &list[..]));
-                        } else if mi.name == "disable" {
+                        } else if mi.name() == "disable" {
                             options.disable = Some(meta_list_to_set(cx, &list[..]));
                         } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name));
+                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name()));
                         }
                     }
                     Word => {
-                        if mi.name == "pause" {
+                        if mi.name() == "pause" {
                             options.pause = true;
                         } else {
-                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name))
+                            cx.span_warn(i.span, &format!("Invalid option {}", mi.name()))
                         }
                     }
                 }
@@ -282,12 +294,12 @@ fn expand_mod(cx: &mut ExtCtxt, m: &ast::Mod, options: Options) -> Vec<P<Item>> 
     } else {
         let depth_ident = Ident::with_empty_ctxt(Symbol::intern("depth"));
         let u32_ident = Ident::with_empty_ctxt(Symbol::intern("u32"));
-        let ty = cx.ty_path(cx.path(codemap::DUMMY_SP, vec![u32_ident]));
-        let item_ = cx.item_static(codemap::DUMMY_SP,
+        let ty = cx.ty_path(cx.path(source_map::DUMMY_SP, vec![u32_ident]));
+        let item_ = cx.item_static(source_map::DUMMY_SP,
                                    depth_ident,
                                    ty,
                                    Mutable,
-                                   cx.expr_u32(codemap::DUMMY_SP, 0));
+                                   cx.expr_u32(source_map::DUMMY_SP, 0));
         new_items.push(item_);
     }
 
@@ -311,13 +323,11 @@ fn expand_function(cx: &mut ExtCtxt, options: Options, item: &P<Item>, direct: b
         }
     }
 
-    if let Fn(ref decl, style, constness, abi, ref generics, ref block) = item.node {
+    if let Fn(ref decl, ref header, ref generics, ref block) = item.node {
         let idents = arg_idents(cx, &**decl);
         let new_block = new_block(cx, options, name, block.clone(), idents, direct);
         Fn(decl.clone(),
-           style,
-           constness,
-           abi,
+           header.clone(),
            generics.clone(),
            new_block)
     } else {
@@ -335,8 +345,8 @@ fn arg_idents(cx: &mut ExtCtxt, decl: &FnDecl) -> Vec<Ident> {
             PatKind::Range(..) |
             PatKind::Path(..) => (),
             PatKind::Ident(_, sp, _) => {
-                if &*sp.node.name.as_str() != "self" {
-                    idents.push(sp.node);
+                if &*sp.name.as_str() != "self" {
+                    idents.push(sp);
                 }
             }
             PatKind::TupleStruct(_, ref v, _) |
@@ -400,11 +410,11 @@ fn new_block(cx: &mut ExtCtxt,
     };
 
     let args: Vec<TokenTree> = idents.iter()
-        .map(|ident| vec![token::Ident((*ident).clone())])
+        .map(|&ident| vec![token::Ident(ident.clone(), false)])
         .collect::<Vec<_>>()
         .join(&token::Comma)
         .into_iter()
-        .map(|t| TokenTree::Token(codemap::DUMMY_SP, t))
+        .map(|t| TokenTree::Token(source_map::DUMMY_SP, t))
         .collect();
 
     let mut arg_fmt = vec![];
