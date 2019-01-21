@@ -14,6 +14,5 @@ fn foo() {
 
 struct Foo;
 impl Foo {
-    fn bar(&self) {
-    }
+    fn bar(&self) {}
 }
