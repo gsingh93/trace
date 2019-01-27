@@ -136,8 +136,7 @@ fn transform_mod(
         });
 
         items.insert(0, parse_quote! {
-            #[allow(non_upper_case_globals)]
-            static mut depth: usize = 0;
+            static mut DEPTH: usize = 0;
         });
     }
 }
@@ -230,13 +229,13 @@ fn construct_traced_block(
     };
 
     parse_quote! {{
-        println!(#entering_format, "", #(#arg_idents,)* depth = unsafe { depth });
+        println!(#entering_format, "", #(#arg_idents,)* depth = unsafe { DEPTH });
         #pause_stmt
-        unsafe { depth += 1; }
+        unsafe { DEPTH += 1; }
         let fn_closure = move || #original_block;
         let fn_return_value = fn_closure();
-        unsafe { depth -= 1; }
-        println!(#exiting_format, "", fn_return_value, depth = unsafe { depth });
+        unsafe { DEPTH -= 1; }
+        println!(#exiting_format, "", fn_return_value, depth = unsafe { DEPTH });
         #pause_stmt
         fn_return_value
     }}
