@@ -12,6 +12,22 @@ use syn::{
 };
 
 
+#[proc_macro]
+pub fn init_depth_var(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let output = if input.is_empty() {
+        quote! {
+            ::std::thread_local! {
+                static DEPTH: ::std::cell::Cell<usize> = ::std::cell::Cell::new(0);
+            }
+        }
+    } else {
+        let input2 = proc_macro2::TokenStream::from(input);
+        syn::Error::new_spanned(input2, "`init_depth_var` takes no arguments").to_compile_error()
+    };
+
+    output.into()
+}
+
 #[proc_macro_attribute]
 pub fn trace(args: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let raw_args = syn::parse_macro_input!(args as syn::AttributeArgs);
