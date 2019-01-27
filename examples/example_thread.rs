@@ -1,13 +1,10 @@
 extern crate trace;
 
-use std::cell::Cell;
 use std::thread;
 use std::time::Duration;
 use trace::trace;
 
-thread_local! {
-    static DEPTH: Cell<usize> = Cell::new(0);
-}
+trace::init_depth_var!();
 
 fn main() {
     let handle = thread::spawn(|| {

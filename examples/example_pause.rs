@@ -1,11 +1,8 @@
 extern crate trace;
 
-use std::cell::Cell;
 use trace::trace;
 
-thread_local! {
-    static DEPTH: Cell<usize> = Cell::new(0);
-}
+trace::init_depth_var!();
 
 fn main() {
     foo(1);

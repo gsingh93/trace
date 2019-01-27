@@ -22,8 +22,7 @@ extern crate trace;
 
 use trace::trace;
 
-#[allow(non_upper_case_globals)]
-static mut depth: u32 = 0;
+trace::init_depth_var!();
 
 fn main() {
     foo(1, 2);
@@ -56,15 +55,25 @@ I'm in bar!
 [-] Exiting foo = ()
 ```
 
-- Note the `depth` variable must be a global `static mut` variable, it's used for indenting the output.
+- Note the convenience `trace::init_depth_var!()` macro which declares and initializes the thread-local `DEPTH` variable that is used for indenting the output.
+  Calling `trace::init_depth_var!()` is equivalent to writing:
+
+  ```rust
+  use std::cell::Cell;
+
+  thread_local! {
+      static DEPTH: Cell<usize> = Cell::new(0);
+  }
+  ```
+
   The only time it can be omitted is when `#[trace]` is applied to `mod`s, as described below.
 
 - **Warning**: due to stabilizing only a part of proc macro functionality in Rust 1.30, `#[trace]` can be used on `mod` only on nightly, and there is currently no way to use `#![trace]` as an outer attribute.
 
   You can use `#[trace]` on `mod`s as well.
   To apply `#[trace]` to all functions in the current `mod`, put `#![trace]` (note the `!`) at the top of the file.
-  When using `#[trace]` on `mod`s, the `depth` variable doesn't need to be defined (it's defined for you automatically).
-  Note that the `depth` variable isn't shared between `mod`s, so indentation won't be perfect when tracing functions in multiple `mod`s.
+  When using `#[trace]` on `mod`s, the `DEPTH` variable doesn't need to be defined (it's defined for you automatically).
+  Note that the `DEPTH` variable isn't shared between `mod`s, so indentation won't be perfect when tracing functions in multiple `mod`s.
 
 - You can also use `#[trace]` on entire `impl`s or individual `impl` methods.
   See the `examples` folder for more details.
