@@ -9,7 +9,6 @@ use quote::{ToTokens, quote};
 use syn::{
     parse_quote,
     parse::{Parse, Parser},
-    spanned::Spanned,
 };
 
 
@@ -20,7 +19,7 @@ pub fn trace(args: proc_macro::TokenStream, input: proc_macro::TokenStream) -> p
         Ok(args) => args,
         Err(errors) => return errors
             .iter()
-            .map(syn::parse::Error::to_compile_error)
+            .map(syn::Error::to_compile_error)
             .collect::<proc_macro2::TokenStream>()
             .into(),
     };
@@ -30,8 +29,8 @@ pub fn trace(args: proc_macro::TokenStream, input: proc_macro::TokenStream) -> p
     } else if let Ok(impl_item) = syn::ImplItem::parse.parse(input.clone()) {
         expand_impl_item(&args, impl_item)
     } else {
-        let span = proc_macro2::TokenStream::from(input).span();
-        syn::parse::Error::new(span, "expected one of: `fn`, `impl`, `mod`").to_compile_error()
+        let input2 = proc_macro2::TokenStream::from(input);
+        syn::Error::new_spanned(input2, "expected one of: `fn`, `impl`, `mod`").to_compile_error()
     };
 
     output.into()
@@ -55,7 +54,7 @@ fn expand_item(
         syn::Item::Mod(_)  |
         syn::Item::Impl(_) => item.into_token_stream(),
         _ => {
-            syn::parse::Error::new(item.span(), "#[trace] is not supported for this item")
+            syn::Error::new_spanned(item, "#[trace] is not supported for this item")
                 .to_compile_error()
         },
     }
@@ -70,7 +69,7 @@ fn expand_impl_item(
     match impl_item {
         syn::ImplItem::Method(_) => impl_item.into_token_stream(),
         _ => {
-            syn::parse::Error::new(impl_item.span(), "#[trace] is not supported for this impl item")
+            syn::Error::new_spanned(impl_item, "#[trace] is not supported for this impl item")
                 .to_compile_error()
         },
     }

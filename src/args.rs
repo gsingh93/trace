@@ -24,7 +24,7 @@ const DEFAULT_PREFIX_EXIT: &str = "[-]";
 const DEFAULT_PAUSE: bool = false;
 
 impl Args {
-    pub(crate) fn from_raw_args(raw_args: syn::AttributeArgs) -> Result<Self, Vec<syn::parse::Error>> {
+    pub(crate) fn from_raw_args(raw_args: syn::AttributeArgs) -> Result<Self, Vec<syn::Error>> {
         // Different types of arguments accepted by `#[trace]`;
         // spans are needed for friendly error reporting of duplicate arguments
         enum Arg {
@@ -53,26 +53,26 @@ impl Args {
                     "enable"       => ArgName::Enable,
                     "disable"      => ArgName::Disable,
                     "pause"        => ArgName::Pause,
-                    _ => return Err(vec![syn::parse::Error::new(
+                    _ => return Err(vec![syn::Error::new(
                         ident.span(),
                         format_args!("unknown attribute argument `{}`", ident),
                     )]),
                 };
 
                 let prefix_enter_type_error = || vec![
-                    syn::parse::Error::new(ident.span(), "`prefix_enter` requires a string value")
+                    syn::Error::new(ident.span(), "`prefix_enter` requires a string value")
                 ];
                 let prefix_exit_type_error = || vec![
-                    syn::parse::Error::new(ident.span(), "`prefix_exit` requires a string value")
+                    syn::Error::new(ident.span(), "`prefix_exit` requires a string value")
                 ];
                 let enable_type_error = || vec![
-                    syn::parse::Error::new(ident.span(), "`enable` requires a list of meta words")
+                    syn::Error::new(ident.span(), "`enable` requires a list of meta words")
                 ];
                 let disable_type_error = || vec![
-                    syn::parse::Error::new(ident.span(), "`disable` requires a list of meta words")
+                    syn::Error::new(ident.span(), "`disable` requires a list of meta words")
                 ];
                 let pause_type_error = || vec![
-                    syn::parse::Error::new(ident.span(), "`pause` must be a meta word")
+                    syn::Error::new(ident.span(), "`pause` must be a meta word")
                 ];
 
                 match *meta {
@@ -93,7 +93,7 @@ impl Args {
                                 syn::NestedMeta::Meta(syn::Meta::Word(ref word)) => {
                                     idents.insert(word.clone());
                                 },
-                                _ => other_nested_meta_errors.push(syn::parse::Error::new(
+                                _ => other_nested_meta_errors.push(syn::Error::new(
                                     nested_meta.span(),
                                     "`enable` must contain words only",
                                 )),
@@ -113,7 +113,7 @@ impl Args {
                                 syn::NestedMeta::Meta(syn::Meta::Word(ref word)) => {
                                     idents.insert(word.clone());
                                 },
-                                _ => other_nested_meta_errors.push(syn::parse::Error::new(
+                                _ => other_nested_meta_errors.push(syn::Error::new(
                                     nested_meta.span(),
                                     "`disable` must contain words only",
                                 )),
@@ -135,7 +135,7 @@ impl Args {
                             syn::Lit::Str(ref lit_str) => {
                                 Ok(Arg::PrefixEnter(meta.span(), lit_str.value()))
                             },
-                            _ => Err(vec![syn::parse::Error::new(
+                            _ => Err(vec![syn::Error::new(
                                 lit.span(),
                                 "`prefix_enter` must have a string value",
                             )]),
@@ -144,7 +144,7 @@ impl Args {
                             syn::Lit::Str(ref lit_str) => {
                                 Ok(Arg::PrefixExit(meta.span(), lit_str.value()))
                             },
-                            _ => Err(vec![syn::parse::Error::new(
+                            _ => Err(vec![syn::Error::new(
                                 lit.span(),
                                 "`prefix_exit` must have a string value",
                             )]),
@@ -157,7 +157,7 @@ impl Args {
                 }
             },
             syn::NestedMeta::Literal(_) => {
-                Err(vec![syn::parse::Error::new(nested_meta.span(), "literal attribute not allowed")])
+                Err(vec![syn::Error::new(nested_meta.span(), "literal attribute not allowed")])
             },
         });
 
@@ -185,37 +185,37 @@ impl Args {
         // Report duplicates
         if prefix_enter_args.len() >= 2 {
             errors.extend(prefix_enter_args.iter().map(|(span, _)| {
-                syn::parse::Error::new(*span, "duplicate `prefix_enter`")
+                syn::Error::new(*span, "duplicate `prefix_enter`")
             }));
         }
         if prefix_exit_args.len() >= 2 {
             errors.extend(prefix_exit_args.iter().map(|(span, _)| {
-                syn::parse::Error::new(*span, "duplicate `prefix_exit`")
+                syn::Error::new(*span, "duplicate `prefix_exit`")
             }));
         }
         if enable_args.len() >= 2 {
             errors.extend(enable_args.iter().map(|(span, _)| {
-                syn::parse::Error::new(*span, "duplicate `enable`")
+                syn::Error::new(*span, "duplicate `enable`")
             }));
         }
         if disable_args.len() >= 2 {
             errors.extend(disable_args.iter().map(|(span, _)| {
-                syn::parse::Error::new(*span, "duplicate `disable`")
+                syn::Error::new(*span, "duplicate `disable`")
             }));
         }
         if pause_args.len() >= 2 {
             errors.extend(pause_args.iter().map(|(span, _)| {
-                syn::parse::Error::new(*span, "duplicate `pause`")
+                syn::Error::new(*span, "duplicate `pause`")
             }));
         }
 
         // Report the presence of mutually exclusive arguments
         if enable_args.len() == 1 && disable_args.len() == 1 {
-            errors.push(syn::parse::Error::new(
+            errors.push(syn::Error::new(
                 enable_args[0].0,
                 "cannot have both `enable` and `disable`",
             ));
-            errors.push(syn::parse::Error::new(
+            errors.push(syn::Error::new(
                 disable_args[0].0,
                 "cannot have both `enable` and `disable`",
             ));
