@@ -1,8 +1,11 @@
 extern crate trace;
 
+use std::cell::Cell;
 use trace::trace;
 
-static mut DEPTH: usize = 0;
+thread_local! {
+    static DEPTH: Cell<usize> = Cell::new(0);
+}
 
 fn main() {
     let foo = Foo;

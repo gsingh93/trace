@@ -136,7 +136,9 @@ fn transform_mod(
         });
 
         items.insert(0, parse_quote! {
-            static mut DEPTH: usize = 0;
+            ::std::thread_local! {
+                static DEPTH: ::std::cell::Cell<usize> = ::std::cell::Cell::new(0);
+            }
         });
     }
 }
@@ -229,13 +231,13 @@ fn construct_traced_block(
     };
 
     parse_quote! {{
-        println!(#entering_format, "", #(#arg_idents,)* depth = unsafe { DEPTH });
+        println!(#entering_format, "", #(#arg_idents,)* depth = DEPTH.with(|d| d.get()));
         #pause_stmt
-        unsafe { DEPTH += 1; }
+        DEPTH.with(|d| d.set(d.get() + 1));
         let mut fn_closure = move || #original_block;
         let fn_return_value = fn_closure();
-        unsafe { DEPTH -= 1; }
-        println!(#exiting_format, "", fn_return_value, depth = unsafe { DEPTH });
+        DEPTH.with(|d| d.set(d.get() - 1));
+        println!(#exiting_format, "", fn_return_value, depth = DEPTH.with(|d| d.get()));
         #pause_stmt
         fn_return_value
     }}
