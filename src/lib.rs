@@ -232,7 +232,7 @@ fn construct_traced_block(
         println!(#entering_format, "", #(#arg_idents,)* depth = unsafe { DEPTH });
         #pause_stmt
         unsafe { DEPTH += 1; }
-        let fn_closure = move || #original_block;
+        let mut fn_closure = move || #original_block;
         let fn_return_value = fn_closure();
         unsafe { DEPTH -= 1; }
         println!(#exiting_format, "", fn_return_value, depth = unsafe { DEPTH });
