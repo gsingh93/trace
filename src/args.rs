@@ -53,26 +53,26 @@ impl Args {
                     "enable"       => ArgName::Enable,
                     "disable"      => ArgName::Disable,
                     "pause"        => ArgName::Pause,
-                    _ => return Err(vec![syn::Error::new(
-                        ident.span(),
+                    _ => return Err(vec![syn::Error::new_spanned(
+                        ident.clone(),
                         format_args!("unknown attribute argument `{}`", ident),
                     )]),
                 };
 
                 let prefix_enter_type_error = || vec![
-                    syn::Error::new(ident.span(), "`prefix_enter` requires a string value")
+                    syn::Error::new_spanned(ident.clone(), "`prefix_enter` requires a string value")
                 ];
                 let prefix_exit_type_error = || vec![
-                    syn::Error::new(ident.span(), "`prefix_exit` requires a string value")
+                    syn::Error::new_spanned(ident.clone(), "`prefix_exit` requires a string value")
                 ];
                 let enable_type_error = || vec![
-                    syn::Error::new(ident.span(), "`enable` requires a list of meta words")
+                    syn::Error::new_spanned(ident.clone(), "`enable` requires a list of meta words")
                 ];
                 let disable_type_error = || vec![
-                    syn::Error::new(ident.span(), "`disable` requires a list of meta words")
+                    syn::Error::new_spanned(ident.clone(), "`disable` requires a list of meta words")
                 ];
                 let pause_type_error = || vec![
-                    syn::Error::new(ident.span(), "`pause` must be a meta word")
+                    syn::Error::new_spanned(ident.clone(), "`pause` must be a meta word")
                 ];
 
                 match *meta {
@@ -93,8 +93,8 @@ impl Args {
                                 syn::NestedMeta::Meta(syn::Meta::Word(ref word)) => {
                                     idents.insert(word.clone());
                                 },
-                                _ => other_nested_meta_errors.push(syn::Error::new(
-                                    nested_meta.span(),
+                                _ => other_nested_meta_errors.push(syn::Error::new_spanned(
+                                    nested_meta,
                                     "`enable` must contain words only",
                                 )),
                             });
@@ -113,8 +113,8 @@ impl Args {
                                 syn::NestedMeta::Meta(syn::Meta::Word(ref word)) => {
                                     idents.insert(word.clone());
                                 },
-                                _ => other_nested_meta_errors.push(syn::Error::new(
-                                    nested_meta.span(),
+                                _ => other_nested_meta_errors.push(syn::Error::new_spanned(
+                                    nested_meta,
                                     "`disable` must contain words only",
                                 )),
                             });
@@ -135,8 +135,8 @@ impl Args {
                             syn::Lit::Str(ref lit_str) => {
                                 Ok(Arg::PrefixEnter(meta.span(), lit_str.value()))
                             },
-                            _ => Err(vec![syn::Error::new(
-                                lit.span(),
+                            _ => Err(vec![syn::Error::new_spanned(
+                                lit,
                                 "`prefix_enter` must have a string value",
                             )]),
                         },
@@ -144,8 +144,8 @@ impl Args {
                             syn::Lit::Str(ref lit_str) => {
                                 Ok(Arg::PrefixExit(meta.span(), lit_str.value()))
                             },
-                            _ => Err(vec![syn::Error::new(
-                                lit.span(),
+                            _ => Err(vec![syn::Error::new_spanned(
+                                lit,
                                 "`prefix_exit` must have a string value",
                             )]),
                         },
@@ -157,7 +157,7 @@ impl Args {
                 }
             },
             syn::NestedMeta::Literal(_) => {
-                Err(vec![syn::Error::new(nested_meta.span(), "literal attribute not allowed")])
+                Err(vec![syn::Error::new_spanned(nested_meta, "literal attribute not allowed")])
             },
         });
 
