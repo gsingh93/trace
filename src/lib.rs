@@ -230,10 +230,11 @@ fn construct_traced_block(
         .collect::<Vec<_>>()
         .join(", ");
 
+    let pretty = if args.pretty { "#" } else { "" };
     let entering_format =
         format!("{{:depth$}}{} Entering {}({})", args.prefix_enter, ident, arg_idents_format);
     let exiting_format =
-        format!("{{:depth$}}{} Exiting {} = {{:?}}", args.prefix_exit, ident);
+        format!("{{:depth$}}{} Exiting {} = {{:{}?}}", args.prefix_exit, ident, pretty);
 
     let pause_stmt = if args.pause {
         quote! {{
