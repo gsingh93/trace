@@ -11,6 +11,7 @@ pub(crate) struct Args {
     pub(crate) prefix_exit: String,
     pub(crate) filter: Filter,
     pub(crate) pause: bool,
+    pub(crate) pretty: bool,
 }
 
 pub(crate) enum Filter {
@@ -22,6 +23,7 @@ pub(crate) enum Filter {
 const DEFAULT_PREFIX_ENTER: &str = "[+]";
 const DEFAULT_PREFIX_EXIT: &str = "[-]";
 const DEFAULT_PAUSE: bool = false;
+const DEFAULT_PRETTY: bool = false;
 
 impl Args {
     pub(crate) fn from_raw_args(raw_args: syn::AttributeArgs) -> Result<Self, Vec<syn::Error>> {
@@ -33,6 +35,7 @@ impl Args {
             Enable(proc_macro2::Span, HashSet<proc_macro2::Ident>),
             Disable(proc_macro2::Span, HashSet<proc_macro2::Ident>),
             Pause(proc_macro2::Span, bool),
+            Pretty(proc_macro2::Span, bool),
         }
 
         // Parse arguments
@@ -44,6 +47,7 @@ impl Args {
                     Enable,
                     Disable,
                     Pause,
+                    Pretty,
                 }
 
                 let ident = meta.name();
@@ -53,6 +57,7 @@ impl Args {
                     "enable"       => ArgName::Enable,
                     "disable"      => ArgName::Disable,
                     "pause"        => ArgName::Pause,
+                    "pretty"       => ArgName::Pretty,
                     _ => return Err(vec![syn::Error::new_spanned(
                         ident.clone(),
                         format_args!("unknown attribute argument `{}`", ident),
@@ -74,10 +79,14 @@ impl Args {
                 let pause_type_error = || vec![
                     syn::Error::new_spanned(ident.clone(), "`pause` must be a meta word")
                 ];
+                let pretty_type_error = || vec![
+                    syn::Error::new_spanned(ident.clone(), "`pretty` must be a meta word")
+                ];
 
                 match *meta {
                     syn::Meta::Word(_) => match arg_name {
                         ArgName::Pause => Ok(Arg::Pause(meta.span(), true)),
+                        ArgName::Pretty => Ok(Arg::Pretty(meta.span(), true)),
 
                         ArgName::PrefixEnter => Err(prefix_enter_type_error()),
                         ArgName::PrefixExit  => Err(prefix_exit_type_error()),
@@ -129,6 +138,7 @@ impl Args {
                         ArgName::PrefixEnter => Err(prefix_enter_type_error()),
                         ArgName::PrefixExit  => Err(prefix_exit_type_error()),
                         ArgName::Pause       => Err(pause_type_error()),
+                        ArgName::Pretty      => Err(pretty_type_error()),
                     },
                     syn::Meta::NameValue(syn::MetaNameValue { ref lit, .. }) => match arg_name {
                         ArgName::PrefixEnter => match *lit {
@@ -153,6 +163,7 @@ impl Args {
                         ArgName::Enable  => Err(enable_type_error()),
                         ArgName::Disable => Err(disable_type_error()),
                         ArgName::Pause   => Err(pause_type_error()),
+                        ArgName::Pretty  => Err(pretty_type_error()),
                     },
                 }
             },
@@ -166,6 +177,7 @@ impl Args {
         let mut enable_args = vec![];
         let mut disable_args = vec![];
         let mut pause_args = vec![];
+        let mut pretty_args = vec![];
         let mut errors = vec![];
 
         // Group arguments of the same type and errors
@@ -177,6 +189,7 @@ impl Args {
                     Arg::Enable(span, idents)  => enable_args.push((span, idents)),
                     Arg::Disable(span, idents) => disable_args.push((span, idents)),
                     Arg::Pause(span, b)        => pause_args.push((span, b)),
+                    Arg::Pretty(span, b)        => pretty_args.push((span, b)),
                 },
                 Err(es) => errors.extend(es),
             }
@@ -206,6 +219,11 @@ impl Args {
         if pause_args.len() >= 2 {
             errors.extend(pause_args.iter().map(|(span, _)| {
                 syn::Error::new(*span, "duplicate `pause`")
+            }));
+        }
+        if pretty_args.len() >= 2 {
+            errors.extend(pretty_args.iter().map(|(span, _)| {
+                syn::Error::new(*span, "duplicate `pretty`")
             }));
         }
 
@@ -238,8 +256,10 @@ impl Args {
             };
             let pause = first_no_span!(pause_args)
                 .unwrap_or(DEFAULT_PAUSE);
+            let pretty = first_no_span!(pretty_args)
+                .unwrap_or(DEFAULT_PRETTY);
 
-            Ok(Self { prefix_enter, prefix_exit, filter, pause })
+            Ok(Self { prefix_enter, prefix_exit, filter, pause, pretty })
         } else {
             Err(errors)
         }
