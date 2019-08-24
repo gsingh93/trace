@@ -15,5 +15,5 @@ quote = "0.6.8"
 syn = { version = "0.15.22", features = ["full"] }
 
 [dev-dependencies]
-log = "0.4.0"
+log = "0.4.8"
 env_logger = "0.6.2"
