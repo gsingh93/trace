@@ -2,7 +2,6 @@ language: rust
 sudo: false
 
 rust:
-  - 1.30.0  # Minimum supported Rust
   - stable
   - beta
 
