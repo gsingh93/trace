@@ -113,8 +113,7 @@ fn transform_fn(
     item_fn.block = Box::new(construct_traced_block(
         &args,
         attr_applied,
-        &item_fn.ident,
-        &item_fn.decl,
+        &item_fn.sig,
         &item_fn.block,
     ));
 }
@@ -137,7 +136,7 @@ fn transform_mod(
         items.iter_mut().for_each(|item| {
             if let AttrApplied::Directly = attr_applied {
                 match *item {
-                    syn::Item::Fn(syn::ItemFn { ref ident, .. })   |
+                    syn::Item::Fn(syn::ItemFn { sig: syn::Signature { ref ident, .. }, .. })   |
                     syn::Item::Mod(syn::ItemMod { ref ident, .. }) => match args.filter {
                         args::Filter::Enable(ref idents) if !idents.contains(ident) => { return; }
                         args::Filter::Disable(ref idents) if idents.contains(ident) => { return; }
@@ -178,8 +177,7 @@ fn transform_impl(
             impl_item_method.block = construct_traced_block(
                 &args,
                 AttrApplied::Indirectly,
-                &impl_item_method.sig.ident,
-                &impl_item_method.sig.decl,
+                &impl_item_method.sig,
                 &impl_item_method.block,
             );
         }
@@ -209,8 +207,7 @@ fn transform_method(
     impl_item_method.block = construct_traced_block(
         &args,
         attr_applied,
-        &impl_item_method.sig.ident,
-        &impl_item_method.sig.decl,
+        &impl_item_method.sig,
         &impl_item_method.block,
     );
 }
@@ -219,11 +216,10 @@ fn transform_method(
 fn construct_traced_block(
     args: &args::Args,
     attr_applied: AttrApplied,
-    ident: &proc_macro2::Ident,
-    fn_decl: &syn::FnDecl,
+    sig: &syn::Signature,
     original_block: &syn::Block,
 ) -> syn::Block {
-    let arg_idents = extract_arg_idents(args, attr_applied, &fn_decl);
+    let arg_idents = extract_arg_idents(args, attr_applied, &sig);
     let arg_idents_format = arg_idents
         .iter()
         .map(|arg_ident| format!("{} = {{:?}}", arg_ident))
@@ -232,9 +228,9 @@ fn construct_traced_block(
 
     let pretty = if args.pretty { "#" } else { "" };
     let entering_format =
-        format!("{{:depth$}}{} Entering {}({})", args.prefix_enter, ident, arg_idents_format);
+        format!("{{:depth$}}{} Entering {}({})", args.prefix_enter, sig.ident, arg_idents_format);
     let exiting_format =
-        format!("{{:depth$}}{} Exiting {} = {{:{}?}}", args.prefix_exit, ident, pretty);
+        format!("{{:depth$}}{} Exiting {} = {{:{}?}}", args.prefix_exit, sig.ident, pretty);
 
     let pause_stmt = if args.pause {
         quote! {{
@@ -268,7 +264,7 @@ fn construct_traced_block(
 fn extract_arg_idents(
     args: &args::Args,
     attr_applied: AttrApplied,
-    fn_decl: &syn::FnDecl,
+    sig: &syn::Signature,
 ) -> Vec<proc_macro2::Ident> {
     fn process_pat(
         args: &args::Args,
@@ -291,7 +287,7 @@ fn extract_arg_idents(
                 arg_idents.push(ident.clone());
             },
             syn::Pat::Tuple(ref pat_tuple) => {
-                pat_tuple.front.iter().for_each(|pat| {
+                pat_tuple.elems.iter().for_each(|pat| {
                     process_pat(args, attr_applied, pat, arg_idents);
                 });
             },
@@ -301,15 +297,12 @@ fn extract_arg_idents(
 
     let mut arg_idents = vec![];
 
-    for input in &fn_decl.inputs {
-        match *input {
-            syn::FnArg::SelfRef(_)   |
-            syn::FnArg::SelfValue(_) => (),  // ignore `self`
-            syn::FnArg::Captured(ref arg_captured) => {
-                process_pat(args, attr_applied, &arg_captured.pat, &mut arg_idents);
+    for input in &sig.inputs {
+        match input {
+            syn::FnArg::Receiver(_) => (),  // ignore `self`
+            syn::FnArg::Typed(arg_typed) => {
+                process_pat(args, attr_applied, &arg_typed.pat, &mut arg_idents);
             },
-            syn::FnArg::Inferred(_) |
-            syn::FnArg::Ignored(_)  => unimplemented!(),
         }
     }
 
