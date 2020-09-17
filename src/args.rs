@@ -54,7 +54,7 @@ impl Args {
                     Logging,
                 }
 
-                let ident = meta.name();
+                let ident = &meta.path().segments.first().unwrap().ident;
                 let arg_name = match ident.to_string().as_str() {
                     "prefix_enter" => ArgName::PrefixEnter,
                     "prefix_exit"  => ArgName::PrefixExit,
@@ -92,7 +92,7 @@ impl Args {
                 ];
 
                 match *meta {
-                    syn::Meta::Word(_) => match arg_name {
+                    syn::Meta::Path(_) => match arg_name {
                         ArgName::Pause   => Ok(Arg::Pause(meta.span(), true)),
                         ArgName::Pretty  => Ok(Arg::Pretty(meta.span(), true)),
                         ArgName::Logging => Ok(Arg::Logging(meta.span(), true)),
@@ -108,12 +108,12 @@ impl Args {
                             let mut other_nested_meta_errors = Vec::new();
 
                             nested.iter().for_each(|nested_meta| match *nested_meta {
-                                syn::NestedMeta::Meta(syn::Meta::Word(ref word)) => {
-                                    idents.insert(word.clone());
+                                syn::NestedMeta::Meta(syn::Meta::Path(ref path)) if path.segments.len() == 1 => {
+                                    idents.insert(path.segments.first().unwrap().ident.clone());
                                 },
                                 _ => other_nested_meta_errors.push(syn::Error::new_spanned(
                                     nested_meta,
-                                    "`enable` must contain words only",
+                                    "`enable` must contain single ident paths only",
                                 )),
                             });
 
@@ -128,12 +128,12 @@ impl Args {
                             let mut other_nested_meta_errors = Vec::new();
 
                             nested.iter().for_each(|nested_meta| match *nested_meta {
-                                syn::NestedMeta::Meta(syn::Meta::Word(ref word)) => {
-                                    idents.insert(word.clone());
+                                syn::NestedMeta::Meta(syn::Meta::Path(ref path)) if path.segments.len() == 1 => {
+                                    idents.insert(path.segments.first().unwrap().ident.clone());
                                 },
                                 _ => other_nested_meta_errors.push(syn::Error::new_spanned(
                                     nested_meta,
-                                    "`disable` must contain words only",
+                                    "`disable` must contain single ident paths only",
                                 )),
                             });
 
@@ -178,7 +178,7 @@ impl Args {
                     },
                 }
             },
-            syn::NestedMeta::Literal(_) => {
+            syn::NestedMeta::Lit(_) => {
                 Err(vec![syn::Error::new_spanned(nested_meta, "literal attribute not allowed")])
             },
         });
