@@ -4,7 +4,7 @@ version = "0.1.6"
 authors = ["Gulshan Singh <gsingh2011@gmail.com>"]
 repository = "https://github.com/gsingh93/trace"
 license = "MIT"
-description = "A syntax extension for tracing the execution of functions"
+description = "A procedural macro for tracing the execution of functions"
 edition = "2018"
 
 [lib]
