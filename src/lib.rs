@@ -1,3 +1,77 @@
+//! A procedural macro for tracing the execution of functions.
+//!
+//! Adding `#[trace]` to the top of any function will insert `println!` statements at the beginning
+//! and the end of that function, notifying you of when that function was entered and exited and
+//! printing the argument and return values.  This is useful for quickly debugging whether functions
+//! that are supposed to be called are actually called without manually inserting print statements.
+//!
+//! Note that this macro requires all arguments to the function and the return value to have types
+//! that implement `Debug`. You can disable the printing of certain arguments if necessary.
+//!
+//! You can also add `#[trace]` to `impl`s and `mod`s to enable tracing for all functions in the
+//! `impl` or `mod`. If you use `#[trace]` on a `mod` or `impl` as well as on a method or function
+//! inside one of those elements, then only the outermost `#[trace]` is used.
+//!
+//! `#[trace]` takes a few optional arguments that configure things like the prefixes to use,
+//! enabling/disabling particular arguments or functions, and more. See the
+//! [documentation](macro@trace) for details.
+//!
+//! ## Example
+//!
+//! See the examples in `examples/`. You can run the following example with
+//! `cargo run --example example_prefix`.
+//! ```
+//! use trace::trace;
+//!
+//! trace::init_depth_var!();
+//!
+//! fn main() {
+//!     foo(1, 2);
+//! }
+//!
+//! #[trace]
+//! fn foo(a: i32, b: i32) {
+//!     println!("I'm in foo!");
+//!     bar((a, b));
+//! }
+//!
+//! #[trace(prefix_enter="[ENTER]", prefix_exit="[EXIT]")]
+//! fn bar((a, b): (i32, i32)) -> i32 {
+//!     println!("I'm in bar!");
+//!     if a == 1 {
+//!         2
+//!     } else {
+//!         b
+//!     }
+//! }
+//! ```
+//!
+//! Output:
+//! ```
+//! [+] Entering foo(a = 1, b = 2)
+//! I'm in foo!
+//!  [ENTER] Entering bar(a = 1, b = 2)
+//! I'm in bar!
+//!  [EXIT] Exiting bar = 2
+//! [-] Exiting foo = ()
+//! ```
+//!
+//! Note the convenience [`trace::init_depth_var!()`](macro@init_depth_var) macro which declares and
+//! initializes the thread-local `DEPTH` variable that is used for indenting the output. Calling
+//! `trace::init_depth_var!()` is equivalent to writing:
+//! ```
+//! use std::cell::Cell;
+//!
+//! thread_local! {
+//!     static DEPTH: Cell<usize> = Cell::new(0);
+//! }
+//! ```
+//!
+//! The only time it can be omitted is when `#[trace]` is applied to `mod`s as it's defined for you
+//! automatically (see `examples/example_mod.rs`). Note that the `DEPTH` variable isn't shared
+//! between `mod`s, so indentation won't be perfect when tracing functions in multiple `mod`s. Also
+//! note that using trace as an inner attribute (`#![trace]`) is not supported at this time.
+
 mod args;
 
 use quote::{quote, ToTokens};
@@ -6,6 +80,19 @@ use syn::{
     parse_quote,
 };
 
+/// A convenience macro for declaring the `DEPTH` variable used for indenting the output
+///
+/// Calling this macro is equivalent to:
+/// ```
+/// use std::cell::Cell;
+///
+/// thread_local! {
+///     static DEPTH: Cell<usize> = Cell::new(0);
+/// }
+/// ```
+///
+/// It is required to declare a `DEPTH` variable unless using `#[trace]` on a `mod`, in which case
+/// the variable is declared for you.
 #[proc_macro]
 pub fn init_depth_var(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let output = if input.is_empty() {
@@ -22,6 +109,37 @@ pub fn init_depth_var(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     output.into()
 }
 
+/// Enables tracing the execution of functions
+///
+/// It supports the following optional arguments (see the `examples` folder for examples of using
+/// each of these):
+///
+/// - `prefix_enter` - The prefix of the `println!` statement when a function is entered. Defaults
+/// to `[+]`.
+///
+/// - `prefix_exit` - The prefix of the `println!` statement when a function is exited. Defaults to
+/// `[-]`.
+///
+/// - `enable` - When applied to a `mod` or `impl`, `enable` takes a list of function names to
+/// print, not printing any functions that are not part of this list. All functions are enabled by
+/// default. When applied to an `impl` method or a function, `enable` takes a list of arguments to
+/// print, not printing any arguments that are not part of the list. All arguments are enabled by
+/// default.
+///
+/// - `disable` - When applied to a `mod` or `impl`, `disable` takes a list of function names to not
+/// print, printing all other functions in the `mod` or `impl`. No functions are disabled by
+/// default. When applied to an `impl` method or a function, `disable` takes a list of arguments to
+/// not print, printing all other arguments. No arguments are disabled by default.
+///
+/// - `pause` - When given as an argument to `#[trace]`, execution is paused after each line of
+/// tracing output until enter is pressed. This allows you to trace through a program step by
+/// step. Disabled by default.
+///
+/// - `pretty` - Pretty print the output (use `{:#?}` instead of `{:?}`). Disabled by default.
+///
+/// - `logging` - Use `log::trace!` from the `log` crate instead of `println`. Disabled by default.
+///
+/// Note that `enable` and `disable` can not be used together, and doing so will result in an error.
 #[proc_macro_attribute]
 pub fn trace(
     args: proc_macro::TokenStream,
