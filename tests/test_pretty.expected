@@ -1,0 +1,4 @@
+[+] Entering foo(a = Foo("Foo"))
+[-] Exiting foo = Foo(
+    "Foo",
+)

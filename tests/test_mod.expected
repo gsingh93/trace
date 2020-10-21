@@ -1,0 +1,5 @@
+[+] Entering foo()
+I'm in foo!
+[-] Exiting foo = ()
+[+] Entering bar()
+[-] Exiting bar = ()

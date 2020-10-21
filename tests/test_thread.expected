@@ -1,0 +1,6 @@
+[+] Entering bar(x = 20)
+[+] Entering foo(x = 10)
+ [+] Entering bar(x = 12)
+[-] Exiting bar = 30
+ [-] Exiting bar = 22
+[-] Exiting foo = 18

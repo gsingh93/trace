@@ -1,0 +1,6 @@
+[+] Entering foo(a = 10, b = 20)
+ [+] Entering bar(x = 30)
+ [-] Exiting bar = ()
+ [+] Entering bar(x = 60)
+ [-] Exiting bar = ()
+[-] Exiting foo = ()

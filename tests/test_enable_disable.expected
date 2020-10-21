@@ -1,0 +1,8 @@
+[+] Entering bar(a = 7)
+[-] Exiting bar = 7
+[+] Entering bar(a = 7)
+[-] Exiting bar = 7
+[+] Entering enabled_arg(a = 2)
+[-] Exiting enabled_arg = 5
+[+] Entering disabled_arg(a = 3)
+[-] Exiting disabled_arg = 5

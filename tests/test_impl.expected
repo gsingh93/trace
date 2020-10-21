@@ -1,0 +1,4 @@
+[+] Entering foo(b = 2)
+[-] Exiting foo = 2
+[+] Entering bar(a = 7)
+[-] Exiting bar = 7
