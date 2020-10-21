@@ -53,3 +53,10 @@ fn enabled_arg(a: i32, b: i32) -> i32 {
 fn disabled_arg(a: i32, b: i32) -> i32 {
     a + b
 }
+
+#[cfg(test)]
+#[macro_use]
+mod trace_test;
+
+#[cfg(test)]
+trace_test!(test_enable_disable, main());

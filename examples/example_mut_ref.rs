@@ -20,3 +20,10 @@ fn foo(a: &mut u32, b: &mut u32) {
 fn bar(x: &mut u32) {
     *x -= 5;
 }
+
+#[cfg(test)]
+#[macro_use]
+mod trace_test;
+
+#[cfg(test)]
+trace_test!(test_mut_ref, main());

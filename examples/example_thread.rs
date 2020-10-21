@@ -25,3 +25,10 @@ fn bar(x: u32) -> u32 {
     thread::sleep(Duration::from_millis(200));
     x + 10
 }
+
+#[cfg(test)]
+#[macro_use]
+mod trace_test;
+
+#[cfg(test)]
+trace_test!(test_thread, main());

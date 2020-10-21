@@ -14,3 +14,10 @@ fn main() {
 fn foo(a: i32, b: i32) {
     println!("I'm in foo!");
 }
+
+#[cfg(test)]
+#[macro_use]
+mod trace_test;
+
+#[cfg(test)]
+trace_test!(test_logging, main());

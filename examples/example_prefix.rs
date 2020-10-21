@@ -21,3 +21,10 @@ fn bar((a, b): (i32, i32)) -> i32 {
         b
     }
 }
+
+#[cfg(test)]
+#[macro_use]
+mod trace_test;
+
+#[cfg(test)]
+trace_test!(test_prefix, main());

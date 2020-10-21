@@ -12,7 +12,11 @@ macro_rules! trace_test {
                 buf.read_to_string(&mut actual_output).unwrap();
             }
 
-            let test_filename = concat!("tests/", stringify!($test_name), ".expected");
+            let test_filename = concat!(
+                "examples/expected_test_outputs/",
+                stringify!($test_name),
+                ".expected"
+            );
             let expected_output = std::fs::read_to_string(test_filename).unwrap();
             assert_eq!(actual_output, expected_output);
         }
