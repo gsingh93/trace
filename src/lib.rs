@@ -47,7 +47,7 @@
 //! ```
 //!
 //! Output:
-//! ```
+//! ```text
 //! [+] Entering foo(a = 1, b = 2)
 //! I'm in foo!
 //!  [ENTER] Entering bar(a = 1, b = 2)
