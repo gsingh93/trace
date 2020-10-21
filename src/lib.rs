@@ -173,7 +173,7 @@ fn transform_impl_item(
     impl_item: &mut syn::ImplItem,
 ) {
     // Will probably add more cases in the future
-    #[cfg_attr(feature = "cargo-clippy", allow(single_match))]
+    #[allow(clippy::single_match)]
     match *impl_item {
         syn::ImplItem::Method(ref mut impl_item_method) => {
             transform_method(args, attr_applied, impl_item_method)
