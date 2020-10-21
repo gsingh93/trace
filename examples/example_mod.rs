@@ -2,8 +2,6 @@
 // error[E0658]: The attribute `trace` is currently unknown to the compiler and may have meaning added to it in the future (see issue #29642)
 //#![trace]
 
-#![feature(proc_macro_hygiene)] // to use custom attributes on `mod`
-
 use trace::trace;
 
 // error: an inner attribute is not permitted in this context
