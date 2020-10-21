@@ -1,12 +1,4 @@
-// error[E0658]: non-builtin inner attributes are unstable (see issue #54726)
-// error[E0658]: The attribute `trace` is currently unknown to the compiler and may have meaning added to it in the future (see issue #29642)
-//#![trace]
-
 use trace::trace;
-
-// error: an inner attribute is not permitted in this context
-// error[E0658]: non-builtin inner attributes are unstable (see issue #54726)
-//#![trace]
 
 fn main() {
     foo::foo();
