@@ -5,7 +5,7 @@ use trace::trace;
 
 trace::init_depth_var!();
 
-trace_test!(test_functions, foo(1, 2));
+trace_test!(test_prefix, foo(1, 2));
 
 #[trace]
 fn foo(a: i32, b: i32) {
