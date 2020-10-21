@@ -7,22 +7,22 @@ rust:
 
 script:
   - cargo build --verbose
-  # Some examples require nightly, so let's delegate that to nightly builds
-  - cargo test --verbose --lib
+  # --nocapture is required to verify the stdout of the tests with gag-rs
+  - cargo test --verbose -- --nocapture
 
-matrix:
+jobs:
   include:
     - rust: nightly
       script:
         - cargo build --verbose
-        - cargo test --verbose
+        - cargo test --verbose -- --nocapture
 
         - RUSTFLAGS='--cfg procmacro2_semver_exempt' cargo build --verbose
         - RUSTFLAGS='--cfg procmacro2_semver_exempt' cargo test --verbose
 
         - cargo update -Z minimal-versions
         - cargo build --verbose
-        - cargo test --verbose
+        - cargo test --verbose -- --nocapture
 
         - RUSTFLAGS='--cfg procmacro2_semver_exempt' cargo build --verbose
         - RUSTFLAGS='--cfg procmacro2_semver_exempt' cargo test --verbose
