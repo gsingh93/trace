@@ -1,5 +1,3 @@
-extern crate gag;
-
 #[macro_export]
 macro_rules! trace_test {
     ($test_name:ident, $expression:expr) => {

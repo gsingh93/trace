@@ -1,5 +1,3 @@
-extern crate trace;
-
 use trace::trace;
 
 trace::init_depth_var!();

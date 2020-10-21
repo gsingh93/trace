@@ -1,5 +1,3 @@
-extern crate trace;
-
 #[macro_use]
 mod trace_test;
 

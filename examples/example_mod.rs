@@ -4,8 +4,6 @@
 
 #![feature(proc_macro_hygiene)] // to use custom attributes on `mod`
 
-extern crate trace;
-
 use trace::trace;
 
 // error: an inner attribute is not permitted in this context

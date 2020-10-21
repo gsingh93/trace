@@ -4,8 +4,6 @@
 
 #![feature(proc_macro_hygiene)] // to use custom attributes on `mod`
 
-extern crate trace;
-
 #[macro_use]
 mod trace_test;
 

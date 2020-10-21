@@ -1,6 +1,5 @@
 extern crate env_logger;
 extern crate log;
-extern crate trace;
 
 #[macro_use]
 mod trace_test;

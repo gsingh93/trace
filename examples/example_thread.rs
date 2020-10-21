@@ -1,5 +1,3 @@
-extern crate trace;
-
 use std::thread;
 use std::time::Duration;
 use trace::trace;

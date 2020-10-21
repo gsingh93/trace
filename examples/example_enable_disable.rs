@@ -1,5 +1,3 @@
-extern crate trace;
-
 use std::cell::Cell;
 use trace::trace;
 
