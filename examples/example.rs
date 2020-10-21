@@ -14,7 +14,7 @@ fn foo(a: i32, b: i32) {
     bar((a, b));
 }
 
-#[trace(prefix_enter="[ENTER]", prefix_exit="[EXIT]")]
+#[trace(prefix_enter = "[ENTER]", prefix_exit = "[EXIT]")]
 fn bar((a, b): (i32, i32)) -> i32 {
     println!("I'm in bar!");
     if a == 1 {

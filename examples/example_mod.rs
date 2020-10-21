@@ -2,7 +2,7 @@
 // error[E0658]: The attribute `trace` is currently unknown to the compiler and may have meaning added to it in the future (see issue #29642)
 //#![trace]
 
-#![feature(proc_macro_hygiene)]  // to use custom attributes on `mod`
+#![feature(proc_macro_hygiene)] // to use custom attributes on `mod`
 
 extern crate trace;
 
@@ -19,14 +19,13 @@ fn main() {
 }
 
 #[trace]
-mod foo{
+mod foo {
     pub(super) fn foo() {
         println!("I'm in foo!");
     }
 
     pub(super) struct Foo;
     impl Foo {
-        pub(super) fn bar(&self) {
-        }
+        pub(super) fn bar(&self) {}
     }
 }
