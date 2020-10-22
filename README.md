@@ -1,5 +1,5 @@
 trace
-[![Build Status](https://img.shields.io/travis/gsingh93/trace)](https://travis-ci.org/gsingh93/trace)
+[![Build Status](https://img.shields.io/travis/gsingh93/trace/master)](https://travis-ci.org/gsingh93/trace)
 [![Latest Version](https://img.shields.io/crates/v/trace.svg)](https://crates.io/crates/trace)
 [![Documentation](https://docs.rs/trace/badge.svg)](https://docs.rs/trace)
 -----
