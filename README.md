@@ -13,14 +13,14 @@ See the [`examples`](examples/) directory and the [documentation](https://docs.r
 ## Installation
 
 Add it as a dependency in your `Cargo.toml` file:
-```
+```toml
 [dependencies]
 trace = "*"
 ```
 
 ## Example
 
-```
+```rust
 use trace::trace;
 
 trace::init_depth_var!();
