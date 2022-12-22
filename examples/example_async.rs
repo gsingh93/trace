@@ -24,7 +24,7 @@ struct Logger {
 
 struct Math {}
 
-#[trace(prefix_enter = "INFO")]
+#[trace]
 #[async_trait::async_trait]
 impl Log for Logger {
     async fn log(&self, message: &str) -> String {
