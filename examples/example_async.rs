@@ -52,4 +52,8 @@ fn main() {
 }
 
 #[cfg(test)]
+#[macro_use]
+mod trace_test;
+
+#[cfg(test)]
 trace_test!(test_async, main());
