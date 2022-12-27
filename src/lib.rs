@@ -206,7 +206,7 @@ fn transform_item(args: &args::Args, attr_applied: AttrApplied, item: &mut syn::
 
 fn transform_fn(args: &args::Args, attr_applied: AttrApplied, item_fn: &mut syn::ItemFn) {
     item_fn.block = Box::new(construct_traced_block(
-        &args,
+        args,
         attr_applied,
         &item_fn.sig,
         &item_fn.block,
@@ -276,7 +276,7 @@ fn transform_impl(args: &args::Args, attr_applied: AttrApplied, item_impl: &mut 
             }
 
             impl_item_method.block = construct_traced_block(
-                &args,
+                args,
                 AttrApplied::Indirectly,
                 &impl_item_method.sig,
                 &impl_item_method.block,
@@ -306,7 +306,7 @@ fn transform_method(
     impl_item_method: &mut syn::ImplItemMethod,
 ) {
     impl_item_method.block = construct_traced_block(
-        &args,
+        args,
         attr_applied,
         &impl_item_method.sig,
         &impl_item_method.block,
@@ -319,7 +319,7 @@ fn construct_traced_block(
     sig: &syn::Signature,
     original_block: &syn::Block,
 ) -> syn::Block {
-    let arg_idents = extract_arg_idents(args, attr_applied, &sig);
+    let arg_idents = extract_arg_idents(args, attr_applied, sig);
     let arg_idents_format = arg_idents
         .iter()
         .map(|arg_ident| format!("{} = {{:?}}", arg_ident))
