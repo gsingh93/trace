@@ -356,8 +356,7 @@ fn construct_traced_block(
         #printer(#entering_format, "", #(#arg_idents,)* depth = DEPTH.with(|d| d.get()));
         #pause_stmt
         DEPTH.with(|d| d.set(d.get() + 1));
-        let mut fn_closure = move || #original_block;
-        let fn_return_value = fn_closure();
+        let fn_return_value = #original_block;
         DEPTH.with(|d| d.set(d.get() - 1));
         #printer(#exiting_format, "", fn_return_value, depth = DEPTH.with(|d| d.get()));
         #pause_stmt

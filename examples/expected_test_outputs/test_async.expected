@@ -1,0 +1,10 @@
+[+] Entering squared(x = 64)
+[-] Exiting squared = 4096
+[+] Entering log(message = "something happened")
+[-] Exiting log = "[DEBUG] something happened"
+[+] Entering cubed(x = 32)
+ [+] Entering squared(x = 32)
+ [-] Exiting squared = 1024
+ [+] Entering squared(x = 1024)
+ [-] Exiting squared = 1048576
+[-] Exiting cubed = 1048576
