@@ -1,8 +1,9 @@
 trace
-[![Build Status](https://img.shields.io/travis/gsingh93/trace/master)](https://travis-ci.org/gsingh93/trace)
+-----
+[![Unit tests](https://github.com/gsingh93/trace/actions/workflows/tests.yml/badge.svg)](https://github.com/gsingh93/trace/actions/workflows/tests.yml)
 [![Latest Version](https://img.shields.io/crates/v/trace.svg)](https://crates.io/crates/trace)
 [![Documentation](https://docs.rs/trace/badge.svg)](https://docs.rs/trace)
------
+[![License](https://img.shields.io/github/license/gsingh93/trace)](/LICENSE)
 
 A procedural macro for tracing the execution of functions.
 
