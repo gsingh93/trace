@@ -6,7 +6,7 @@ repository = "https://github.com/gsingh93/trace"
 license = "MIT"
 readme = "README.md"
 description = "A procedural macro for tracing the execution of functions"
-edition = "2018"
+edition = "2021"
 
 [lib]
 proc-macro = true
