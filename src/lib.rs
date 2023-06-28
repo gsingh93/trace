@@ -400,7 +400,7 @@ fn fix_interpolated(
     kept_arg_idents: &mut Vec<Ident>,
 ) -> Result<String, syn::Error> {
     if last_char != '}' {
-        return Err(syn::Error::new(Span::call_site(), ""));
+        return Err(syn::Error::new(Span::call_site(), format!("expected `}}`, but found `{last_char}`.")));
     }
     let predicate = |arg_ident: &Ident| *arg_ident == ident;
     if let Some(index) = kept_arg_idents.iter().position(predicate) {
@@ -409,7 +409,7 @@ fn fix_interpolated(
         kept_arg_idents.push(arg_idents.remove(index));
         Ok(format!("{{{}}}", kept_arg_idents.len()))
     } else {
-        Ok(format!("{{{ident}}}"))
+        Ok(format!("{{{{{ident}}}}}"))
     }
 }
 
@@ -453,7 +453,7 @@ fn skip_whitespace_and_check(
             c if c.is_whitespace() => {
                 *last_char = ident_char;
             }
-            _ => return Err(syn::Error::new(Span::call_site(), "")),
+            _ => return Err(syn::Error::new(Span::call_site(), format!("expected `}}`, but found `{blank_char}."))),
         }
     }
     Ok(())

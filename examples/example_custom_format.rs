@@ -6,7 +6,7 @@ fn main() {
     foo(4, 4)
 }
 
-#[trace(format_enter = "{y} and {x} {x}")]
+#[trace(format_enter = "{y} and {x} {7}")]
 fn foo(x: u32, y: u32) {}
 
 #[cfg(test)]
