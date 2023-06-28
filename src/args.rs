@@ -5,6 +5,8 @@ use syn::{self, spanned::Spanned};
 pub(crate) struct Args {
     pub(crate) prefix_enter: String,
     pub(crate) prefix_exit: String,
+    pub(crate) format_enter: Option<String>,
+    pub(crate) format_exit: Option<String>,
     pub(crate) filter: Filter,
     pub(crate) pause: bool,
     pub(crate) pretty: bool,
@@ -23,6 +25,17 @@ const DEFAULT_PAUSE: bool = false;
 const DEFAULT_PRETTY: bool = false;
 const DEFAULT_LOGGING: bool = false;
 
+macro_rules! try_extract_str {
+    ($lit:expr, $meta:expr, $arg_ty:ident) => {{
+        match *$lit {
+            syn::Lit::Str(ref lit_str) => Ok(Arg::$arg_ty($meta.span(), lit_str.value())),
+            _ => Err(vec![syn::Error::new_spanned(
+                $lit,
+                format!("`{}` must have a string value", stringify!($arg_ty)),
+            )]),
+        }
+    }};
+}
 impl Args {
     pub(crate) fn from_raw_args(raw_args: syn::AttributeArgs) -> Result<Self, Vec<syn::Error>> {
         // Different types of arguments accepted by `#[trace]`;
@@ -35,6 +48,8 @@ impl Args {
             Pause(proc_macro2::Span, bool),
             Pretty(proc_macro2::Span, bool),
             Logging(proc_macro2::Span, bool),
+            FormatEnter(proc_macro2::Span, String),
+            FormatExit(proc_macro2::Span, String),
         }
 
         // Parse arguments
@@ -43,6 +58,8 @@ impl Args {
                 enum ArgName {
                     PrefixEnter,
                     PrefixExit,
+                    FormatEnter,
+                    FormatExit,
                     Enable,
                     Disable,
                     Pause,
@@ -54,6 +71,8 @@ impl Args {
                 let arg_name = match ident.to_string().as_str() {
                     "prefix_enter" => ArgName::PrefixEnter,
                     "prefix_exit" => ArgName::PrefixExit,
+                    "format_enter" => ArgName::FormatEnter,
+                    "format_exit" => ArgName::FormatExit,
                     "enable" => ArgName::Enable,
                     "disable" => ArgName::Disable,
                     "pause" => ArgName::Pause,
@@ -74,6 +93,18 @@ impl Args {
                     )]
                 };
                 let prefix_exit_type_error = || {
+                    vec![syn::Error::new_spanned(
+                        ident.clone(),
+                        "`prefix_exit` requires a string value",
+                    )]
+                };
+                let format_enter_type_error = || {
+                    vec![syn::Error::new_spanned(
+                        ident.clone(),
+                        "`prefix_enter` requires a string value",
+                    )]
+                };
+                let format_exit_type_error = || {
                     vec![syn::Error::new_spanned(
                         ident.clone(),
                         "`prefix_exit` requires a string value",
@@ -115,11 +146,12 @@ impl Args {
                         ArgName::Pause => Ok(Arg::Pause(meta.span(), true)),
                         ArgName::Pretty => Ok(Arg::Pretty(meta.span(), true)),
                         ArgName::Logging => Ok(Arg::Logging(meta.span(), true)),
-
                         ArgName::PrefixEnter => Err(prefix_enter_type_error()),
                         ArgName::PrefixExit => Err(prefix_exit_type_error()),
                         ArgName::Enable => Err(enable_type_error()),
                         ArgName::Disable => Err(disable_type_error()),
+                        ArgName::FormatEnter => Err(format_enter_type_error()),
+                        ArgName::FormatExit => Err(format_exit_type_error()),
                     },
                     syn::Meta::List(syn::MetaList { ref nested, .. }) => match arg_name {
                         ArgName::Enable => {
@@ -172,27 +204,14 @@ impl Args {
                         ArgName::Pause => Err(pause_type_error()),
                         ArgName::Pretty => Err(pretty_type_error()),
                         ArgName::Logging => Err(logging_type_error()),
+                        ArgName::FormatEnter => Err(format_enter_type_error()),
+                        ArgName::FormatExit => Err(format_exit_type_error()),
                     },
                     syn::Meta::NameValue(syn::MetaNameValue { ref lit, .. }) => match arg_name {
-                        ArgName::PrefixEnter => match *lit {
-                            syn::Lit::Str(ref lit_str) => {
-                                Ok(Arg::PrefixEnter(meta.span(), lit_str.value()))
-                            }
-                            _ => Err(vec![syn::Error::new_spanned(
-                                lit,
-                                "`prefix_enter` must have a string value",
-                            )]),
-                        },
-                        ArgName::PrefixExit => match *lit {
-                            syn::Lit::Str(ref lit_str) => {
-                                Ok(Arg::PrefixExit(meta.span(), lit_str.value()))
-                            }
-                            _ => Err(vec![syn::Error::new_spanned(
-                                lit,
-                                "`prefix_exit` must have a string value",
-                            )]),
-                        },
-
+                        ArgName::PrefixEnter => try_extract_str!(lit, meta, PrefixEnter),
+                        ArgName::PrefixExit => try_extract_str!(lit, meta, PrefixExit),
+                        ArgName::FormatEnter => try_extract_str!(lit, meta, FormatEnter),
+                        ArgName::FormatExit => try_extract_str!(lit, meta, FormatExit),
                         ArgName::Enable => Err(enable_type_error()),
                         ArgName::Disable => Err(disable_type_error()),
                         ArgName::Pause => Err(pause_type_error()),
@@ -209,6 +228,8 @@ impl Args {
 
         let mut prefix_enter_args = vec![];
         let mut prefix_exit_args = vec![];
+        let mut format_enter_args = vec![];
+        let mut format_exit_args = vec![];
         let mut enable_args = vec![];
         let mut disable_args = vec![];
         let mut pause_args = vec![];
@@ -227,6 +248,8 @@ impl Args {
                     Arg::Pause(span, b) => pause_args.push((span, b)),
                     Arg::Pretty(span, b) => pretty_args.push((span, b)),
                     Arg::Logging(span, b) => logging_args.push((span, b)),
+                    Arg::FormatEnter(span, s) => format_enter_args.push((span, s)),
+                    Arg::FormatExit(span, s) => format_exit_args.push((span, s)),
                 },
                 Err(es) => errors.extend(es),
             }
@@ -245,6 +268,20 @@ impl Args {
                 prefix_exit_args
                     .iter()
                     .map(|(span, _)| syn::Error::new(*span, "duplicate `prefix_exit`")),
+            );
+        }
+        if format_enter_args.len() >= 2 {
+            errors.extend(
+                prefix_enter_args
+                    .iter()
+                    .map(|(span, _)| syn::Error::new(*span, "duplicate `format_enter`")),
+            );
+        }
+        if format_exit_args.len() >= 2 {
+            errors.extend(
+                prefix_exit_args
+                    .iter()
+                    .map(|(span, _)| syn::Error::new(*span, "duplicate `format_exit`")),
             );
         }
         if enable_args.len() >= 2 {
@@ -306,6 +343,8 @@ impl Args {
                 .unwrap_or_else(|| DEFAULT_PREFIX_ENTER.to_owned());
             let prefix_exit =
                 first_no_span!(prefix_exit_args).unwrap_or_else(|| DEFAULT_PREFIX_EXIT.to_owned());
+            let format_enter = first_no_span!(format_enter_args);
+            let format_exit = first_no_span!(format_exit_args);
             let filter = match (first_no_span!(enable_args), first_no_span!(disable_args)) {
                 (None, None) => Filter::None,
                 (Some(idents), None) => Filter::Enable(idents),
@@ -323,6 +362,8 @@ impl Args {
                 pause,
                 pretty,
                 logging,
+                format_enter,
+                format_exit,
             })
         } else {
             Err(errors)
