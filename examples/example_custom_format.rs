@@ -3,11 +3,13 @@ use trace::trace;
 trace::init_depth_var!();
 
 fn main() {
-    foo(4, 4)
+    foo(5, 4);
 }
 
-#[trace(format_enter = "{y} and {x} {7}")]
-fn foo(x: u32, y: u32) {}
+#[trace(format_enter = "{y} and {z} {7}", format_exit = "{r} * {r}")]
+fn foo(z: u32, y: u32) -> u32 {
+    z
+}
 
 #[cfg(test)]
 #[macro_use]
