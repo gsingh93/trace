@@ -7,9 +7,7 @@ fn main() {
 }
 
 #[trace(format_enter = "{y} and {x} {x}")]
-fn foo(x: u32, y: u32) {
-
-}
+fn foo(x: u32, y: u32) {}
 
 #[cfg(test)]
 #[macro_use]

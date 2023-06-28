@@ -74,6 +74,7 @@
 
 mod args;
 
+use proc_macro2::Span;
 use quote::{quote, ToTokens};
 use syn::{
     parse::{Parse, Parser},
@@ -320,16 +321,24 @@ fn construct_traced_block(
     original_block: &syn::Block,
 ) -> syn::Block {
     let arg_idents = extract_arg_idents(args, attr_applied, sig);
-    let arg_idents_format = arg_idents
-        .iter()
-        .map(|arg_ident| format!("{} = {{:?}}", arg_ident))
-        .collect::<Vec<_>>()
-        .join(", ");
-
+    let (arg_idents_format, arg_idents) = if let Some(fmt_str) = &args.format_enter {
+        parse_fmt_str(fmt_str, arg_idents)
+    } else {
+        (
+            Ok(arg_idents
+                .iter()
+                .map(|arg_ident| format!("{} = {{:?}}", arg_ident))
+                .collect::<Vec<_>>()
+                .join(", ")),
+            arg_idents,
+        )
+    };
     let pretty = if args.pretty { "#" } else { "" };
     let entering_format = format!(
         "{{:depth$}}{} Entering {}({})",
-        args.prefix_enter, sig.ident, arg_idents_format
+        args.prefix_enter,
+        sig.ident,
+        arg_idents_format.unwrap()
     );
     let exiting_format = format!(
         "{{:depth$}}{} Exiting {} = {{:{}?}}",
@@ -362,6 +371,75 @@ fn construct_traced_block(
         #pause_stmt
         fn_return_value
     }}
+}
+
+fn parse_fmt_str(
+    fmt_str: &str,
+    mut arg_idents: Vec<proc_macro2::Ident>,
+) -> (Result<String, syn::Error>, Vec<proc_macro2::Ident>) {
+    let mut fixed_format_str = String::new();
+    let mut kept_arg_idents = Vec::new();
+    let mut fmt_iter = fmt_str.chars();
+    while let Some(fmt_char) = fmt_iter.next() {
+        match fmt_char {
+            '{' => {
+                let mut last_char = ' ';
+                let mut ident = String::new();
+                let mut found_end_bracket = false;
+                while let Some(ident_char) = fmt_iter.next() {
+                    match ident_char {
+                        '}' => {
+                            found_end_bracket = true;
+                            break;
+                        }
+                        _ => {
+                            last_char = ident_char;
+                            if !ident_char.is_whitespace() {
+                                ident.push(ident_char);
+                            } else {
+                                for blank_char in fmt_iter.by_ref() {
+                                    match blank_char {
+                                        '}' => {
+                                            found_end_bracket = true;
+                                            break;
+                                        }
+                                        c if c.is_whitespace() => {
+                                            last_char = ident_char;
+                                        }
+                                        _ => {
+                                            return (
+                                                Err(syn::Error::new(Span::call_site(), "")),
+                                                kept_arg_idents,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if !found_end_bracket {
+                    return (Err(syn::Error::new(Span::call_site(), "")), kept_arg_idents);
+                }
+                if let Some(index) = kept_arg_idents
+                    .iter()
+                    .position(|arg_ident| *arg_ident == ident)
+                {
+                    fixed_format_str.push_str(&format!("{{{}}}", index + 1))
+                } else if let Some(index) =
+                    arg_idents.iter().position(|arg_ident| *arg_ident == ident)
+                {
+                    kept_arg_idents.push(arg_idents.remove(index));
+                    fixed_format_str.push_str(&format!("{{{}}}", kept_arg_idents.len()))
+                } else {
+                    fixed_format_str.push_str(&format!("{{{ident}}}"))
+                }
+            }
+            '}' => fixed_format_str.push_str("}}"),
+            _ => fixed_format_str.push(fmt_char),
+        }
+    }
+    (Ok(fixed_format_str), kept_arg_idents)
 }
 
 fn extract_arg_idents(
