@@ -78,7 +78,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{
     parse::{Parse, Parser},
-    parse_quote, Block,
+    parse_quote,
 };
 
 /// A convenience macro for declaring the `DEPTH` variable used for indenting the output
@@ -159,7 +159,7 @@ pub fn init_depth_var(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 /// }
 /// ```
 /// If you try to interpolate anything else it will follow the same rules as `format_enter`. Disabled by default.
-/// 
+///
 /// Note that `enable` and `disable` can not be used together, and doing so will result in an error.
 #[proc_macro_attribute]
 pub fn trace(
@@ -340,7 +340,10 @@ fn construct_traced_block(
     sig: &syn::Signature,
     original_block: &syn::Block,
 ) -> syn::Block {
-    let arg_idents = extract_arg_idents(args, attr_applied, sig).iter().map(|ident| ident.to_token_stream()).collect();
+    let arg_idents = extract_arg_idents(args, attr_applied, sig)
+        .iter()
+        .map(|ident| ident.to_token_stream())
+        .collect();
     let (enter_format, arg_idents) = if let Some(fmt_str) = &args.format_enter {
         parse_fmt_str(fmt_str, arg_idents, false)
     } else {
@@ -355,9 +358,13 @@ fn construct_traced_block(
     };
     let exit_val = vec![quote!("t")];
     let (exit_format, exit_val) = if let Some(fmt_str) = &args.format_exit {
-        parse_fmt_str(&fmt_str, exit_val, true)
-    } else if args.pretty { (Ok("{:#?}".to_string()), exit_val) } else { (Ok("{:?}".to_string()), exit_val) };
-    let should_interpolate = exit_val.len() > 0;
+        parse_fmt_str(fmt_str, exit_val, true)
+    } else if args.pretty {
+        (Ok("{:#?}".to_string()), exit_val)
+    } else {
+        (Ok("{:?}".to_string()), exit_val)
+    };
+    let should_interpolate = !exit_val.is_empty();
     let entering_format = format!(
         "{{:depth$}}{} Entering {}({})",
         args.prefix_enter,
@@ -366,7 +373,9 @@ fn construct_traced_block(
     );
     let exiting_format = format!(
         "{{:depth$}}{} Exiting {} = {}",
-        args.prefix_exit, sig.ident, exit_format.unwrap()
+        args.prefix_exit,
+        sig.ident,
+        exit_format.unwrap()
     );
 
     let pause_stmt = if args.pause {
@@ -385,11 +394,11 @@ fn construct_traced_block(
         quote! { println! }
     };
     let print_exit = if should_interpolate {
-        quote!{{#printer(#exiting_format, "",fn_return_value, depth = DEPTH.with(|d| d.get()));}}
+        quote! {{#printer(#exiting_format, "",fn_return_value, depth = DEPTH.with(|d| d.get()));}}
     } else {
         quote!(#printer(#exiting_format, "", depth = DEPTH.with(|d| d.get()));)
     };
-    let res: Block= parse_quote! {{
+    parse_quote! {{
         #printer(#entering_format, "", #(#arg_idents,)* depth = DEPTH.with(|d| d.get()));
         #pause_stmt
         DEPTH.with(|d| d.set(d.get() + 1));
@@ -398,9 +407,7 @@ fn construct_traced_block(
         #print_exit
         #pause_stmt
         fn_return_value
-    }};
-    println!("{}", res.to_token_stream());
-    res
+    }}
 }
 
 fn parse_fmt_str(
@@ -413,10 +420,13 @@ fn parse_fmt_str(
     let mut fmt_iter = fmt_str.chars();
     while let Some(fmt_char) = fmt_iter.next() {
         match fmt_char {
-            '{' => match parse_interpolated(&mut fmt_iter, &mut arg_idents, &mut kept_arg_idents, exit) {
-                Ok(interpolated) => fixed_format_str.push_str(&interpolated),
-                Err(e) => return (Err(e), kept_arg_idents),
-            },
+            '{' => {
+                match parse_interpolated(&mut fmt_iter, &mut arg_idents, &mut kept_arg_idents, exit)
+                {
+                    Ok(interpolated) => fixed_format_str.push_str(&interpolated),
+                    Err(e) => return (Err(e), kept_arg_idents),
+                }
+            }
             '}' => fixed_format_str.push_str("}}"),
             _ => fixed_format_str.push(fmt_char),
         }
@@ -429,10 +439,13 @@ fn fix_interpolated(
     ident: String,
     arg_idents: &mut Vec<TokenStream>,
     kept_arg_idents: &mut Vec<TokenStream>,
-    exit: bool
+    exit: bool,
 ) -> Result<String, syn::Error> {
     if last_char != '}' {
-        return Err(syn::Error::new(Span::call_site(), format!("expected `}}`, but found `{last_char}`.")));
+        return Err(syn::Error::new(
+            Span::call_site(),
+            format!("expected `}}`, but found `{last_char}`."),
+        ));
     }
     let predicate = |arg_ident: &TokenStream| arg_ident.to_string() == ident;
     if let Some(index) = kept_arg_idents.iter().position(predicate) {
@@ -441,12 +454,11 @@ fn fix_interpolated(
         kept_arg_idents.push(arg_idents.remove(index));
         Ok(format!("{{{}}}", kept_arg_idents.len()))
     } else if exit && ident == "r" {
-        if kept_arg_idents.len() == 0 {
+        if kept_arg_idents.is_empty() {
             std::mem::swap(arg_idents, kept_arg_idents)
         }
-        Ok(format!("{{1}}"))
-    } 
-    else {
+        Ok("{1}".to_string())
+    } else {
         Ok(format!("{{{{{ident}}}}}"))
     }
 }
@@ -492,7 +504,12 @@ fn skip_whitespace_and_check(
             c if c.is_whitespace() => {
                 *last_char = ident_char;
             }
-            _ => return Err(syn::Error::new(Span::call_site(), format!("expected `}}`, but found `{blank_char}."))),
+            _ => {
+                return Err(syn::Error::new(
+                    Span::call_site(),
+                    format!("expected `}}`, but found `{blank_char}."),
+                ))
+            }
         }
     }
     Ok(())
