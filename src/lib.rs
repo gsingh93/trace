@@ -140,6 +140,26 @@ pub fn init_depth_var(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 ///
 /// - `logging` - Use `log::trace!` from the `log` crate instead of `println`. Disabled by default.
 ///
+/// - `format_enter` - The format (anything after the prefix) of of `println!` statements when a function
+/// is entered. Allows parameter interpolation like:
+/// ```rust
+/// #[trace(format_enter = "i is {i}")]
+/// fn foo(i: i32) {
+///     println!("foo")
+/// }
+/// ```
+/// If you try to interpolate a non parameter like `"{1}"` when a function is entered it will just print `{1}`.
+///  Disabled by default.
+///- `format_exit` - The format (anything after the prefix) of of `println!` statements when a function
+/// is exited. to interpolate the return value use `{r}`
+/// ```rust
+/// #[trace(format_exit = "returning {r}")]
+/// fn foo() -> i32 {
+///     1
+/// }
+/// ```
+/// If you try to interpolate anything else it will follow the same rules as `format_enter`. Disabled by default.
+/// 
 /// Note that `enable` and `disable` can not be used together, and doing so will result in an error.
 #[proc_macro_attribute]
 pub fn trace(
