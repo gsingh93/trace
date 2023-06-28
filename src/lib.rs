@@ -74,7 +74,7 @@
 
 mod args;
 
-use proc_macro2::Span;
+use proc_macro2::{Ident, Span};
 use quote::{quote, ToTokens};
 use syn::{
     parse::{Parse, Parser},
@@ -382,64 +382,81 @@ fn parse_fmt_str(
     let mut fmt_iter = fmt_str.chars();
     while let Some(fmt_char) = fmt_iter.next() {
         match fmt_char {
-            '{' => {
-                let mut last_char = ' ';
-                let mut ident = String::new();
-                let mut found_end_bracket = false;
-                while let Some(ident_char) = fmt_iter.next() {
-                    match ident_char {
-                        '}' => {
-                            found_end_bracket = true;
-                            break;
-                        }
-                        _ => {
-                            last_char = ident_char;
-                            if !ident_char.is_whitespace() {
-                                ident.push(ident_char);
-                            } else {
-                                for blank_char in fmt_iter.by_ref() {
-                                    match blank_char {
-                                        '}' => {
-                                            found_end_bracket = true;
-                                            break;
-                                        }
-                                        c if c.is_whitespace() => {
-                                            last_char = ident_char;
-                                        }
-                                        _ => {
-                                            return (
-                                                Err(syn::Error::new(Span::call_site(), "")),
-                                                kept_arg_idents,
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if !found_end_bracket {
-                    return (Err(syn::Error::new(Span::call_site(), "")), kept_arg_idents);
-                }
-                if let Some(index) = kept_arg_idents
-                    .iter()
-                    .position(|arg_ident| *arg_ident == ident)
-                {
-                    fixed_format_str.push_str(&format!("{{{}}}", index + 1))
-                } else if let Some(index) =
-                    arg_idents.iter().position(|arg_ident| *arg_ident == ident)
-                {
-                    kept_arg_idents.push(arg_idents.remove(index));
-                    fixed_format_str.push_str(&format!("{{{}}}", kept_arg_idents.len()))
-                } else {
-                    fixed_format_str.push_str(&format!("{{{ident}}}"))
-                }
-            }
+            '{' => match parse_interpolated(&mut fmt_iter, &mut arg_idents, &mut kept_arg_idents) {
+                Ok(interpolated) => fixed_format_str.push_str(&interpolated),
+                Err(e) => return (Err(e), kept_arg_idents),
+            },
             '}' => fixed_format_str.push_str("}}"),
             _ => fixed_format_str.push(fmt_char),
         }
     }
     (Ok(fixed_format_str), kept_arg_idents)
+}
+
+fn fix_interpolated(
+    last_char: char,
+    ident: String,
+    arg_idents: &mut Vec<Ident>,
+    kept_arg_idents: &mut Vec<Ident>,
+) -> Result<String, syn::Error> {
+    if last_char != '}' {
+        return Err(syn::Error::new(Span::call_site(), ""));
+    }
+    let predicate = |arg_ident: &Ident| *arg_ident == ident;
+    if let Some(index) = kept_arg_idents.iter().position(predicate) {
+        Ok(format!("{{{}}}", index + 1))
+    } else if let Some(index) = arg_idents.iter().position(predicate) {
+        kept_arg_idents.push(arg_idents.remove(index));
+        Ok(format!("{{{}}}", kept_arg_idents.len()))
+    } else {
+        Ok(format!("{{{ident}}}"))
+    }
+}
+
+fn parse_interpolated(
+    fmt_iter: &mut std::str::Chars<'_>,
+    arg_idents: &mut Vec<Ident>,
+    kept_arg_idents: &mut Vec<Ident>,
+) -> Result<String, syn::Error> {
+    let mut last_char = ' ';
+    let mut ident = String::new();
+    while let Some(ident_char) = fmt_iter.next() {
+        match ident_char {
+            '}' => {
+                last_char = '}';
+                break;
+            }
+            _ => {
+                last_char = ident_char;
+                if !ident_char.is_whitespace() {
+                    ident.push(ident_char);
+                } else {
+                    skip_whitespace_and_check(fmt_iter, &mut last_char, ident_char)?;
+                }
+            }
+        }
+    }
+    fix_interpolated(last_char, ident, arg_idents, kept_arg_idents)
+}
+
+fn skip_whitespace_and_check(
+    fmt_iter: &mut std::str::Chars<'_>,
+    last_char: &mut char,
+    ident_char: char,
+) -> Result<(), syn::Error> {
+    for blank_char in fmt_iter.by_ref() {
+        match blank_char {
+            '}' => {
+                *last_char = '}';
+                break;
+            }
+            c if c.is_whitespace() => {
+                *last_char = ident_char;
+            }
+            _ => return Err(syn::Error::new(Span::call_site(), "")),
+        }
+    }
+    Ok(())
 }
 
 fn extract_arg_idents(
