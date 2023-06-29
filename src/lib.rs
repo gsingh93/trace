@@ -345,7 +345,7 @@ fn construct_traced_block(
         .map(|ident| ident.to_token_stream())
         .collect();
     let (enter_format, arg_idents) = if let Some(fmt_str) = &args.format_enter {
-        parse_fmt_str(fmt_str, arg_idents, false)
+        parse_fmt_str(fmt_str, arg_idents)
     } else {
         (
             Ok(arg_idents
@@ -356,9 +356,13 @@ fn construct_traced_block(
             arg_idents,
         )
     };
-    let exit_val = vec![quote!("t")];
+    // we set set exit val to be a vector with one element which is Ident called r
+    // this means that the format parser can indentify when then return value should be interprolated
+    // so if we want to use a different symbol to denote return value interpolation we just need to change the symbol in the following quote
+    // ie: `let exit_val = vec![quote!(return_value)];` if we wanted to use return_value to denote return value interpolation
+    let exit_val = vec![quote!(r)];
     let (exit_format, exit_val) = if let Some(fmt_str) = &args.format_exit {
-        parse_fmt_str(fmt_str, exit_val, true)
+        parse_fmt_str(fmt_str, exit_val)
     } else if args.pretty {
         (Ok("{:#?}".to_string()), exit_val)
     } else {
@@ -413,20 +417,16 @@ fn construct_traced_block(
 fn parse_fmt_str(
     fmt_str: &str,
     mut arg_idents: Vec<TokenStream>,
-    exit: bool,
 ) -> (Result<String, syn::Error>, Vec<TokenStream>) {
     let mut fixed_format_str = String::new();
     let mut kept_arg_idents = Vec::new();
     let mut fmt_iter = fmt_str.chars();
     while let Some(fmt_char) = fmt_iter.next() {
         match fmt_char {
-            '{' => {
-                match parse_interpolated(&mut fmt_iter, &mut arg_idents, &mut kept_arg_idents, exit)
-                {
-                    Ok(interpolated) => fixed_format_str.push_str(&interpolated),
-                    Err(e) => return (Err(e), kept_arg_idents),
-                }
-            }
+            '{' => match parse_interpolated(&mut fmt_iter, &mut arg_idents, &mut kept_arg_idents) {
+                Ok(interpolated) => fixed_format_str.push_str(&interpolated),
+                Err(e) => return (Err(e), kept_arg_idents),
+            },
             '}' => fixed_format_str.push_str("}}"),
             _ => fixed_format_str.push(fmt_char),
         }
@@ -439,7 +439,6 @@ fn fix_interpolated(
     ident: String,
     arg_idents: &mut Vec<TokenStream>,
     kept_arg_idents: &mut Vec<TokenStream>,
-    exit: bool,
 ) -> Result<String, syn::Error> {
     if last_char != '}' {
         return Err(syn::Error::new(
@@ -453,11 +452,6 @@ fn fix_interpolated(
     } else if let Some(index) = arg_idents.iter().position(predicate) {
         kept_arg_idents.push(arg_idents.remove(index));
         Ok(format!("{{{}}}", kept_arg_idents.len()))
-    } else if exit && ident == "r" {
-        if kept_arg_idents.is_empty() {
-            std::mem::swap(arg_idents, kept_arg_idents)
-        }
-        Ok("{1}".to_string())
     } else {
         Ok(format!("{{{{{ident}}}}}"))
     }
@@ -467,7 +461,6 @@ fn parse_interpolated(
     fmt_iter: &mut std::str::Chars<'_>,
     arg_idents: &mut Vec<TokenStream>,
     kept_arg_idents: &mut Vec<TokenStream>,
-    exit: bool,
 ) -> Result<String, syn::Error> {
     let mut last_char = ' ';
     let mut ident = String::new();
@@ -487,7 +480,7 @@ fn parse_interpolated(
             }
         }
     }
-    fix_interpolated(last_char, ident, arg_idents, kept_arg_idents, exit)
+    fix_interpolated(last_char, ident, arg_idents, kept_arg_idents)
 }
 
 fn skip_whitespace_and_check(
