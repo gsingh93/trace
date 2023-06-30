@@ -160,7 +160,9 @@ pub fn init_depth_var(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 /// ```
 /// If you try to interpolate anything else it will follow the same rules as `format_enter`. Disabled by default.
 ///
-/// Note that `enable` and `disable` can not be used together, and doing so will result in an error.
+/// Note that `enable` and `disable` cannot be used together, and doing so will result in an error.
+///
+/// Further note that `format_enter` or `format_exit` cannot be used together with with `pretty`, and doing so will result in an error.
 #[proc_macro_attribute]
 pub fn trace(
     args: proc_macro::TokenStream,

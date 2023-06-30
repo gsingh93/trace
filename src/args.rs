@@ -331,6 +331,26 @@ impl Args {
                 "cannot have both `enable` and `disable`",
             ));
         }
+        if pretty_args.len() == 1 && format_enter_args.len() == 1 {
+            errors.push(syn::Error::new(
+                pretty_args[0].0,
+                "cannot have both `pretty` and `format_enter`",
+            ));
+            errors.push(syn::Error::new(
+                format_enter_args[0].0,
+                "cannot have both `pretty` and `format_enter`",
+            ));
+        }
+        if pretty_args.len() == 1 && format_exit_args.len() == 1 {
+            errors.push(syn::Error::new(
+                pretty_args[0].0,
+                "cannot have both `pretty` and `format_exit`",
+            ));
+            errors.push(syn::Error::new(
+                format_exit_args[0].0,
+                "cannot have both `pretty` and `format_exit`",
+            ));
+        }
 
         if errors.is_empty() {
             macro_rules! first_no_span {
