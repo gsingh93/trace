@@ -6,7 +6,7 @@ fn main() {
     foo(5, 4);
 }
 
-#[trace(format_enter = "{y} and {z} {7}", format_exit = "{r} * {r}")]
+#[trace(format_enter = "{y} and {z} {{7}}", format_exit = "{r} * {r}")]
 fn foo(z: u32, y: u32) -> u32 {
     z
 }

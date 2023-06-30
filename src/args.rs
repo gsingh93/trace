@@ -101,13 +101,13 @@ impl Args {
                 let format_enter_type_error = || {
                     vec![syn::Error::new_spanned(
                         ident.clone(),
-                        "`prefix_enter` requires a string value",
+                        "`format_enter` requires a string value",
                     )]
                 };
                 let format_exit_type_error = || {
                     vec![syn::Error::new_spanned(
                         ident.clone(),
-                        "`prefix_exit` requires a string value",
+                        "`format_exit` requires a string value",
                     )]
                 };
                 let enable_type_error = || {
@@ -272,14 +272,14 @@ impl Args {
         }
         if format_enter_args.len() >= 2 {
             errors.extend(
-                prefix_enter_args
+                format_enter_args
                     .iter()
                     .map(|(span, _)| syn::Error::new(*span, "duplicate `format_enter`")),
             );
         }
         if format_exit_args.len() >= 2 {
             errors.extend(
-                prefix_exit_args
+                format_exit_args
                     .iter()
                     .map(|(span, _)| syn::Error::new(*span, "duplicate `format_exit`")),
             );
