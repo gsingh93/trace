@@ -74,6 +74,9 @@
 
 mod args;
 
+use std::{iter::Peekable, str::Chars};
+
+use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use syn::{
     parse::{Parse, Parser},
@@ -139,7 +142,30 @@ pub fn init_depth_var(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 ///
 /// - `logging` - Use `log::trace!` from the `log` crate instead of `println`. Disabled by default.
 ///
-/// Note that `enable` and `disable` can not be used together, and doing so will result in an error.
+/// - `format_enter` - The format (anything after the prefix) of `println!` statements when a function
+/// is entered. Allows parameter interpolation like:
+/// ```rust
+/// #[trace(format_enter = "i is {i}")]
+/// fn foo(i: i32) {
+///     println!("foo")
+/// }
+/// ```
+/// Interpolation follows the same rules as `format!()` besides for the fact that there is no pretty printing,
+/// that is anything interpolated will be debug formatted. Disabled by default.
+
+/// - `format_exit` - The format (anything after the prefix) of `println!` statements when a function
+/// is exited. To interpolate the return value use `{r}`:
+/// ```rust
+/// #[trace(format_exit = "returning {r}")]
+/// fn foo() -> i32 {
+///     1
+/// }
+/// ```
+/// Otherwise formatting follows the same rules as `format_enter`. Disabled by default.
+///
+/// Note that `enable` and `disable` cannot be used together, and doing so will result in an error.
+///
+/// Further note that `format_enter` or `format_exit` cannot be used together with with `pretty`, and doing so will result in an error.
 #[proc_macro_attribute]
 pub fn trace(
     args: proc_macro::TokenStream,
@@ -319,21 +345,58 @@ fn construct_traced_block(
     sig: &syn::Signature,
     original_block: &syn::Block,
 ) -> syn::Block {
-    let arg_idents = extract_arg_idents(args, attr_applied, sig);
-    let arg_idents_format = arg_idents
+    let arg_idents = extract_arg_idents(args, attr_applied, sig)
         .iter()
-        .map(|arg_ident| format!("{} = {{:?}}", arg_ident))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    let pretty = if args.pretty { "#" } else { "" };
+        .map(|ident| ident.to_token_stream())
+        .collect();
+    let (enter_format, arg_idents) = if let Some(fmt_str) = &args.format_enter {
+        parse_fmt_str(fmt_str, arg_idents)
+    } else {
+        (
+            Ok(arg_idents
+                .iter()
+                .map(|arg_ident| format!("{} = {{:?}}", arg_ident))
+                .collect::<Vec<_>>()
+                .join(", ")),
+            arg_idents,
+        )
+    };
+    // we set set exit val to be a vector with one element which is Ident called r
+    // this means that the format parser can indentify when then return value should be interprolated
+    // so if we want to use a different symbol to denote return value interpolation we just need to change the symbol in the following quote
+    // ie: `let exit_val = vec![quote!(return_value)];` if we wanted to use return_value to denote return value interpolation
+    let exit_val = vec![quote!(r)];
+    let (exit_format, exit_val) = if let Some(fmt_str) = &args.format_exit {
+        parse_fmt_str(fmt_str, exit_val)
+    } else if args.pretty {
+        (Ok("{:#?}".to_string()), exit_val)
+    } else {
+        (Ok("{:?}".to_string()), exit_val)
+    };
+    let should_interpolate = !exit_val.is_empty();
     let entering_format = format!(
         "{{:depth$}}{} Entering {}({})",
-        args.prefix_enter, sig.ident, arg_idents_format
+        args.prefix_enter,
+        sig.ident,
+        match enter_format {
+            Ok(ok) => ok,
+            Err(e) => {
+                let error = e.into_compile_error();
+                return parse_quote! {{#error}};
+            }
+        }
     );
     let exiting_format = format!(
-        "{{:depth$}}{} Exiting {} = {{:{}?}}",
-        args.prefix_exit, sig.ident, pretty
+        "{{:depth$}}{} Exiting {} = {}",
+        args.prefix_exit,
+        sig.ident,
+        match exit_format {
+            Ok(ok) => ok,
+            Err(e) => {
+                let error = e.into_compile_error();
+                return parse_quote! {{#error}};
+            }
+        }
     );
 
     let pause_stmt = if args.pause {
@@ -351,17 +414,135 @@ fn construct_traced_block(
     } else {
         quote! { println! }
     };
-
+    let print_exit = if should_interpolate {
+        quote! {{#printer(#exiting_format, "",fn_return_value, depth = DEPTH.with(|d| d.get()));}}
+    } else {
+        quote!(#printer(#exiting_format, "", depth = DEPTH.with(|d| d.get()));)
+    };
     parse_quote! {{
         #printer(#entering_format, "", #(#arg_idents,)* depth = DEPTH.with(|d| d.get()));
         #pause_stmt
         DEPTH.with(|d| d.set(d.get() + 1));
         let fn_return_value = #original_block;
         DEPTH.with(|d| d.set(d.get() - 1));
-        #printer(#exiting_format, "", fn_return_value, depth = DEPTH.with(|d| d.get()));
+        #print_exit
         #pause_stmt
         fn_return_value
     }}
+}
+
+fn parse_fmt_str(
+    fmt_str: &str,
+    mut arg_idents: Vec<TokenStream>,
+) -> (Result<String, syn::Error>, Vec<TokenStream>) {
+    let mut fixed_format_str = String::new();
+    let mut kept_arg_idents = Vec::new();
+    let mut fmt_iter = fmt_str.chars().peekable();
+    while let Some(fmt_char) = fmt_iter.next() {
+        match fmt_char {
+            '{' => {
+                if let Some('{') = fmt_iter.peek() {
+                    fixed_format_str.push_str("{{");
+                    fmt_iter.next();
+                } else {
+                    match parse_interpolated(&mut fmt_iter, &mut arg_idents, &mut kept_arg_idents) {
+                        Ok(interpolated) => fixed_format_str.push_str(&interpolated),
+                        Err(e) => return (Err(e), kept_arg_idents),
+                    }
+                }
+            }
+            '}' => {
+                if fmt_iter.next() != Some('}') {
+                    return (Err(syn::Error::new(
+                            Span::call_site(),
+                            "invalid format string: unmatched `}` found\nif you intended to print `}`, you can escape it using `}}`"
+                        )), kept_arg_idents);
+                }
+
+                fixed_format_str.push_str("}}")
+            }
+            _ => fixed_format_str.push(fmt_char),
+        }
+    }
+    (Ok(fixed_format_str), kept_arg_idents)
+}
+
+fn fix_interpolated(
+    last_char: char,
+    ident: String,
+    arg_idents: &mut Vec<TokenStream>,
+    kept_arg_idents: &mut Vec<TokenStream>,
+) -> Result<String, syn::Error> {
+    if last_char != '}' {
+        return Err(syn::Error::new(
+            Span::call_site(),
+            "invalid format string: expected `'}}'` but string was terminated\nif you intended to print `{{`, you can escape it using `{{`.",
+        ));
+    }
+    let predicate = |arg_ident: &TokenStream| arg_ident.to_string() == ident;
+    if let Some(index) = kept_arg_idents.iter().position(predicate) {
+        Ok(format!("{{{}}}", index + 1))
+    } else if let Some(index) = arg_idents.iter().position(predicate) {
+        kept_arg_idents.push(arg_idents.remove(index));
+        Ok(format!("{{{}}}", kept_arg_idents.len()))
+    } else {
+        Err(syn::Error::new(
+            Span::call_site(),
+            // TODO: better error message
+            format!("cannot find `{ident}` in this scope."),
+        ))
+    }
+}
+
+fn parse_interpolated(
+    fmt_iter: &mut Peekable<Chars>,
+    arg_idents: &mut Vec<TokenStream>,
+    kept_arg_idents: &mut Vec<TokenStream>,
+) -> Result<String, syn::Error> {
+    let mut last_char = ' ';
+    let mut ident = String::new();
+    while let Some(ident_char) = fmt_iter.next() {
+        match ident_char {
+            '}' => {
+                last_char = '}';
+                break;
+            }
+            _ => {
+                last_char = ident_char;
+                if !ident_char.is_whitespace() {
+                    ident.push(ident_char);
+                } else {
+                    skip_whitespace_and_check(fmt_iter, &mut last_char, ident_char)?;
+                }
+            }
+        }
+    }
+    fix_interpolated(last_char, ident, arg_idents, kept_arg_idents)
+}
+
+fn skip_whitespace_and_check(
+    fmt_iter: &mut Peekable<Chars>,
+    last_char: &mut char,
+    ident_char: char,
+) -> Result<(), syn::Error> {
+    for blank_char in fmt_iter.by_ref() {
+        match blank_char {
+            '}' => {
+                *last_char = '}';
+                break;
+            }
+            c if c.is_whitespace() => {
+                *last_char = ident_char;
+            }
+            _ => {
+                return Err(syn::Error::new(
+                    Span::call_site(),
+                    format!("invalid format string: expected `'}}'`, found `'{blank_char}'`\nif you intended to print `{{`, you can escape it using `{{`."),
+                ))
+            }
+        }
+    }
+    Ok(())
 }
 
 fn extract_arg_idents(
